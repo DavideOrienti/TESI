@@ -1,0 +1,18 @@
+dataset: small  # small | 20m
+
+paths:
+  raw_small: data/raw/ml-latest-small
+  raw_20m: data/raw/ml-20m
+  processed_small: data/processed/small
+  processed_20m: data/processed/20m
+  cache_tmdb: cache/tmdb
+
+tmdb:
+  api_key_env: TMDB_API_KEY
+  sleep_sec: 0.25
+  timeout_sec: 10
+  max_retries: 3
+  backoff_sec: 1.0
+
+movies:
+  clean_year_regex: "\\((\\d{4})\\)$"
