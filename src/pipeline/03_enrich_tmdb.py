@@ -40,21 +40,39 @@ def main():
         sleep_sec=s.tmdb.sleep_sec,
     )
 
-    in_path = s.paths.processed / "movies_with_tags.csv"
+    in_path = s.paths.processed / "movies_with_links.csv"
     out_path = s.paths.processed / "movies_enriched_tmdb.csv"
 
     df = pd.read_csv(in_path)
 
+    print("Columns:", df.columns.tolist())
+    print(df.head(2))
+
     # Resume: se output esiste, riprendi e completa i missing
+    #if out_path.exists():
+    #    prev = pd.read_csv(out_path)
+        # preferisci le colonne già calcolate
+    #    df = df.merge(prev[["movieId"] + [c for c in prev.columns if c != "movieId"]], on="movieId", how="left", suffixes=("", "_prev"))
+     #   for col in ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]:
+      #      if f"{col}_prev" in df.columns:
+       #         df[col] = df[col].fillna(df[f"{col}_prev"])
+        #        df.drop(columns=[f"{col}_prev"], inplace=True)
+
+
+    # Resume: se output esiste, riprendi e completa i missing
+    tmdb_cols = ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]
+
     if out_path.exists():
         prev = pd.read_csv(out_path)
-        # preferisci le colonne già calcolate
-        df = df.merge(prev[["movieId"] + [c for c in prev.columns if c != "movieId"]], on="movieId", how="left", suffixes=("", "_prev"))
-        for col in ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]:
-            if f"{col}_prev" in df.columns:
-                df[col] = df[col].fillna(df[f"{col}_prev"])
-                df.drop(columns=[f"{col}_prev"], inplace=True)
 
+        # prendi solo le colonne TMDB che esistono davvero nel prev
+        cols_to_use = ["movieId"] + [c for c in tmdb_cols if c in prev.columns]
+
+        # merge senza suffixes perché le colonne TMDB non esistono (o le riempiamo dopo)
+        df = df.merge(prev[cols_to_use], on="movieId", how="left")
+
+
+        
     # colonne target
     for col in ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]:
         if col not in df.columns:

@@ -2,3 +2,4 @@
 # DATASET (MovieLens)
 # =============================
 data/raw/**
+.env
