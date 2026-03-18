@@ -2,4 +2,11 @@
 # DATASET (MovieLens)
 # =============================
 data/raw/**
+data/processed/**
+
+# =============================
+# ENVIRONMENT
+# =============================
 .env
+.venv/
+venv/
