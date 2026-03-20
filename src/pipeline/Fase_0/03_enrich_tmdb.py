@@ -4,6 +4,7 @@ import pandas as pd
 from src.utils.io import load_settings
 from src.utils.tmdb_client import build_client
 
+
 def safe_tmdb_int(x) -> int | None:
     if pd.isna(x):
         return None
@@ -11,6 +12,7 @@ def safe_tmdb_int(x) -> int | None:
         return int(float(x))
     except Exception:
         return None
+
 
 def extract_top5_cast(credits: dict | None) -> list[str]:
     if not credits:
@@ -20,6 +22,7 @@ def extract_top5_cast(credits: dict | None) -> list[str]:
     names += [""] * (5 - len(names))
     return names[:5]
 
+
 def extract_director(credits: dict | None) -> str:
     if not credits:
         return ""
@@ -28,6 +31,11 @@ def extract_director(credits: dict | None) -> str:
         if m.get("job") == "Director":
             return m.get("name", "") or ""
     return ""
+
+
+def non_empty_count(series: pd.Series) -> int:
+    return int(series.fillna("").astype(str).str.strip().ne("").sum())
+
 
 def main():
     s = load_settings()
@@ -49,17 +57,6 @@ def main():
     print(df.head(2))
 
     # Resume: se output esiste, riprendi e completa i missing
-    #if out_path.exists():
-    #    prev = pd.read_csv(out_path)
-        # preferisci le colonne già calcolate
-    #    df = df.merge(prev[["movieId"] + [c for c in prev.columns if c != "movieId"]], on="movieId", how="left", suffixes=("", "_prev"))
-     #   for col in ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]:
-      #      if f"{col}_prev" in df.columns:
-       #         df[col] = df[col].fillna(df[f"{col}_prev"])
-        #        df.drop(columns=[f"{col}_prev"], inplace=True)
-
-
-    # Resume: se output esiste, riprendi e completa i missing
     tmdb_cols = ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]
 
     if out_path.exists():
@@ -71,8 +68,6 @@ def main():
         # merge senza suffixes perché le colonne TMDB non esistono (o le riempiamo dopo)
         df = df.merge(prev[cols_to_use], on="movieId", how="left")
 
-
-        
     # colonne target
     for col in ["actors_top5", "director", "popularity", "overview_it", "overview_en", "poster_url"]:
         if col not in df.columns:
@@ -102,7 +97,7 @@ def main():
         popularity = (details_it or {}).get("popularity", None)
         overview_it = (details_it or {}).get("overview", "") or ""
         overview_en = (details_en or {}).get("overview", "") or ""
-        poster_url = client.poster_url_from_details(details_it)
+        poster_url = client.poster_url_from_details(details_it) or client.poster_url_from_details(details_en)
 
         df.at[idx, "actors_top5"] = ", ".join([a for a in actors if a])
         df.at[idx, "director"] = director
@@ -117,6 +112,25 @@ def main():
 
     df.to_csv(out_path, index=False)
     print(f"[03] saved -> {out_path}")
+
+    # Audit finale di copertura
+    total = len(df)
+
+    overview_en_count = non_empty_count(df["overview_en"])
+    overview_it_count = non_empty_count(df["overview_it"])
+    poster_count = non_empty_count(df["poster_url"])
+    director_count = non_empty_count(df["director"])
+    actors_count = non_empty_count(df["actors_top5"])
+    popularity_count = int(df["popularity"].notna().sum())
+
+    print("[03] COVERAGE AUDIT")
+    print(f"overview_en: {overview_en_count}/{total} ({overview_en_count / total:.2%})")
+    print(f"overview_it: {overview_it_count}/{total} ({overview_it_count / total:.2%})")
+    print(f"poster_url : {poster_count}/{total} ({poster_count / total:.2%})")
+    print(f"director   : {director_count}/{total} ({director_count / total:.2%})")
+    print(f"actors_top5: {actors_count}/{total} ({actors_count / total:.2%})")
+    print(f"popularity : {popularity_count}/{total} ({popularity_count / total:.2%})")
+
 
 if __name__ == "__main__":
     main()
