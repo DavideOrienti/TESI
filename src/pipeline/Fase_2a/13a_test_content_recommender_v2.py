@@ -1,28 +1,36 @@
-from pathlib import Path
-import numpy as np
+from __future__ import annotations
 import pandas as pd
 
-DATASET = "small"
-BASE = Path(f"data/processed/{DATASET}")
-
-MOVIES_FILE = BASE / "movies_enriched_tmdb.csv"
-SIM_FILE = BASE / "content_similarity_matrix_v2.npy"
-INDEX_FILE = BASE / "movie_embeddings_index_v2.csv"
+from src.utils.io import load_settings
 
 
 class ContentRecommender:
-    def __init__(self, movies_file: Path, sim_file: Path, index_file: Path):
+    def __init__(self, movies_file, neighbors_file, index_file):
         self.movies = pd.read_csv(movies_file)
-        self.sim_matrix = np.load(sim_file)
+        self.neighbors_df = pd.read_csv(neighbors_file)
         self.index_df = pd.read_csv(index_file)
 
+        # movieId -> movie_idx
         self.movieid_to_index = {
-            int(mid): int(i) for i, mid in enumerate(self.index_df["movieId"].tolist())
+            int(movie_id): int(idx)
+            for idx, movie_id in enumerate(self.index_df["movieId"].tolist())
+        }
+
+        # movie_idx -> movieId
+        self.index_to_movieid = {
+            int(idx): int(movie_id)
+            for idx, movie_id in enumerate(self.index_df["movieId"].tolist())
+        }
+
+        # movieId -> title_clean
+        self.movieid_to_title = {
+            int(row.movieId): str(row.title_clean)
+            for row in self.index_df.itertuples(index=False)
         }
 
     def search_movies(self, query: str, max_results: int = 10) -> pd.DataFrame:
         matches = self.movies[
-            self.movies["title_clean"].str.lower().str.contains(
+            self.movies["title_clean"].fillna("").str.lower().str.contains(
                 query.lower(), na=False, regex=False
             )
         ].copy()
@@ -33,14 +41,20 @@ class ContentRecommender:
         if movie_id not in self.movieid_to_index:
             raise ValueError(f"movieId {movie_id} not found in index.")
 
-        idx = self.movieid_to_index[movie_id]
-        sim_scores = self.sim_matrix[idx]
+        movie_idx = self.movieid_to_index[movie_id]
 
-        top_idx = np.argsort(sim_scores)[::-1][1:top_k + 1]
+        neigh = self.neighbors_df[self.neighbors_df["movie_idx"] == movie_idx].copy()
 
-        recs = self.index_df.iloc[top_idx].copy()
-        recs["score"] = sim_scores[top_idx]
-        return recs.reset_index(drop=True)
+        if neigh.empty:
+            return pd.DataFrame(columns=["movieId", "title_clean", "score"])
+
+        neigh = neigh.sort_values("similarity", ascending=False).head(top_k).copy()
+
+        neigh["movieId"] = neigh["neighbor_idx"].map(self.index_to_movieid)
+        neigh["title_clean"] = neigh["movieId"].map(self.movieid_to_title)
+        neigh["score"] = neigh["similarity"]
+
+        return neigh[["movieId", "title_clean", "score"]].reset_index(drop=True)
 
     def recommend_by_title(self, title_query: str, top_k: int = 10) -> tuple[pd.DataFrame, str]:
         matches = self.search_movies(title_query, max_results=10)
@@ -57,12 +71,20 @@ class ContentRecommender:
 
 
 def main():
+    s = load_settings()
+    base = s.paths.processed
+
+    movies_file = base / "movies_enriched_tmdb.csv"
+    neighbors_file = base / "content_top_neighbors_v2.csv"
+    index_file = base / "movie_embeddings_index_v2.csv"
+
     recommender = ContentRecommender(
-        movies_file=MOVIES_FILE,
-        sim_file=SIM_FILE,
-        index_file=INDEX_FILE
+        movies_file=movies_file,
+        neighbors_file=neighbors_file,
+        index_file=index_file,
     )
 
+    print(f"[13] dataset={s.dataset}")
     print("🎥 Content Recommender V2")
     print("Scrivi un titolo oppure 'exit'\n")
 
@@ -94,6 +116,10 @@ def main():
             selected_title = str(matches.iloc[selected_idx]["title_clean"])
 
             recs = recommender.recommend_by_movie_id(selected_movie_id, top_k=15)
+
+            if recs.empty:
+                print(f"\n⚠️ Nessun vicino trovato per: {selected_title}\n")
+                continue
 
             print(f"\n🎬 Consigli per: {selected_title}\n")
             for row in recs.itertuples(index=False):

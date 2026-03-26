@@ -1,14 +1,15 @@
-from pathlib import Path
+from __future__ import annotations
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-DATASET = "small"
-BASE = Path(f"data/processed/{DATASET}")
+from src.utils.io import load_settings
 
-INPUT_FILE = BASE / "movies_enriched_tmdb.csv"
-OUTPUT_EMBEDDINGS = BASE / "movie_embeddings_v2.npy"
-OUTPUT_INDEX = BASE / "movie_embeddings_index_v2.csv"
+# =========================
+# OUTPUT FILES
+# =========================
+OUTPUT_EMBEDDINGS_NAME = "movie_embeddings_v2.npy"
+OUTPUT_INDEX_NAME = "movie_embeddings_index_v2.csv"
 
 
 def normalize_text(value: object) -> str:
@@ -35,11 +36,21 @@ def normalize_genres(value: object) -> str:
     return str(value).strip().lower().replace("|", " ")
 
 
+def normalize_tags(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value).strip().lower()
+
+
+# =========================
+# TEXT REPRESENTATION
+# =========================
 def build_text_representation(row: pd.Series) -> str:
     genres = normalize_genres(row.get("genres", ""))
     actors = normalize_name_list(row.get("actors_top5", ""))
     director = normalize_name_list(row.get("director", ""))
     overview = normalize_text(row.get("overview_en", ""))
+    tags = normalize_tags(row.get("tags", ""))
 
     # pesi impliciti tramite ripetizione
     text = (
@@ -50,15 +61,28 @@ def build_text_representation(row: pd.Series) -> str:
         f"director {director}. "
         f"actors {actors}. "
         f"actors {actors}. "
+        f"tags {tags}. "
+        f"tags {tags}. "
         f"plot {overview}"
     )
 
     return text.strip()
 
 
+# =========================
+# MAIN
+# =========================
 def main():
-    print("Loading movies dataset...")
-    df = pd.read_csv(INPUT_FILE)
+    s = load_settings()
+
+    input_file = s.paths.processed / "movies_enriched_tmdb.csv"
+    output_embeddings = s.paths.processed / OUTPUT_EMBEDDINGS_NAME
+    output_index = s.paths.processed / OUTPUT_INDEX_NAME
+
+    print(f"[11] dataset={s.dataset}")
+    print(f"[11] loading movies from: {input_file}")
+
+    df = pd.read_csv(input_file)
     print(f"Movies loaded: {len(df)}")
 
     print("Building text representation...")
@@ -76,13 +100,13 @@ def main():
 
     print("Embedding shape:", embeddings.shape)
 
-    np.save(OUTPUT_EMBEDDINGS, embeddings)
+    np.save(output_embeddings, embeddings)
 
     df_index = df[["movieId", "title_clean"]].copy()
-    df_index.to_csv(OUTPUT_INDEX, index=False)
+    df_index.to_csv(output_index, index=False)
 
-    print("Saved embeddings ->", OUTPUT_EMBEDDINGS)
-    print("Saved index ->", OUTPUT_INDEX)
+    print("Saved embeddings ->", output_embeddings)
+    print("Saved index ->", output_index)
 
 
 if __name__ == "__main__":
