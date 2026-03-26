@@ -3,11 +3,13 @@ from dataclasses import dataclass
 from pathlib import Path
 import yaml
 
+
 @dataclass(frozen=True)
 class Paths:
     raw: Path
     processed: Path
     cache_tmdb: Path
+
 
 @dataclass(frozen=True)
 class TMDBCfg:
@@ -17,12 +19,22 @@ class TMDBCfg:
     max_retries: int
     backoff_sec: float
 
+
+@dataclass(frozen=True)
+class FiltersCfg:
+    min_user_ratings: int
+    min_item_ratings: int
+    iterative_filtering: bool
+
+
 @dataclass(frozen=True)
 class Settings:
     dataset: str
     paths: Paths
     tmdb: TMDBCfg
     clean_year_regex: str
+    filters: FiltersCfg
+
 
 def load_settings(settings_path: str = "src/config/settings.yaml") -> Settings:
     with open(settings_path, "r", encoding="utf-8") as f:
@@ -44,9 +56,16 @@ def load_settings(settings_path: str = "src/config/settings.yaml") -> Settings:
         backoff_sec=float(cfg["tmdb"]["backoff_sec"]),
     )
 
+    filters = FiltersCfg(
+        min_user_ratings=int(cfg["filters"]["min_user_ratings"]),
+        min_item_ratings=int(cfg["filters"]["min_item_ratings"]),
+        iterative_filtering=bool(cfg["filters"]["iterative_filtering"]),
+    )
+
     return Settings(
         dataset=dataset,
         paths=Paths(raw=raw, processed=processed, cache_tmdb=cache_tmdb),
         tmdb=tmdb,
         clean_year_regex=cfg["movies"]["clean_year_regex"],
+        filters=filters,
     )

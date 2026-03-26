@@ -1,38 +1,26 @@
 from __future__ import annotations
-from pathlib import Path
 import json
 import pandas as pd
 
+from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
 
+
 # =========================
-# CONFIG
+# CONFIG (parziale)
 # =========================
-DATASET = "small"
-BASE = Path(f"data/processed/{DATASET}")
-
-TRAIN_FILE = BASE / "ratings_train.csv"
-VAL_FILE = BASE / "ratings_val.csv"
-TEST_FILE = BASE / "ratings_test.csv"
-
-OUTPUT_DIR = BASE / "baseline_popularity"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
 TOP_K_LIST = [5, 10, 20]
 MIN_VOTES = 10   # m nella formula IMDb
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    train = pd.read_csv(TRAIN_FILE)
-    val = pd.read_csv(VAL_FILE)
-    test = pd.read_csv(TEST_FILE)
+def load_data(train_file, val_file, test_file) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    train = pd.read_csv(train_file)
+    val = pd.read_csv(val_file)
+    test = pd.read_csv(test_file)
     return train, val, test
 
 
 def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFrame:
-    """
-    Costruisce ranking globale di popolarità sul train usando weighted rating stile IMDb.
-    """
     item_stats = (
         train.groupby("movieId")
         .agg(
@@ -44,7 +32,6 @@ def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFram
 
     c_global = train["rating"].mean()
 
-    # Weighted rating
     item_stats["pop_score"] = (
         (item_stats["rating_count"] / (item_stats["rating_count"] + min_votes)) * item_stats["rating_mean"]
         + (min_votes / (item_stats["rating_count"] + min_votes)) * c_global
@@ -59,11 +46,7 @@ def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFram
 
 
 def get_seen_items(train: pd.DataFrame) -> dict[int, set[int]]:
-    """
-    Mappa userId -> set(movieId) già visti nel train.
-    """
-    seen = train.groupby("userId")["movieId"].apply(set).to_dict()
-    return seen
+    return train.groupby("userId")["movieId"].apply(set).to_dict()
 
 
 def recommend_top_k_for_user(
@@ -86,23 +69,14 @@ def evaluate_split(
     ranking_df: pd.DataFrame,
     top_k_list: list[int]
 ) -> tuple[dict, pd.DataFrame]:
-    """
-    Valuta il ranking popularity su val o test.
-    Assunzione: eval_df contiene una riga per utente (vero nel tuo split leave-last-out).
-    """
+
     seen_map = get_seen_items(train)
     ranking_movie_ids = ranking_df["movieId"].tolist()
 
     rows = []
-    metrics = {
-        f"HR@{k}": [] for k in top_k_list
-    }
-    metrics.update({
-        f"NDCG@{k}": [] for k in top_k_list
-    })
-    metrics.update({
-        f"MRR@{k}": [] for k in top_k_list
-    })
+    metrics = {f"HR@{k}": [] for k in top_k_list}
+    metrics.update({f"NDCG@{k}": [] for k in top_k_list})
+    metrics.update({f"MRR@{k}": [] for k in top_k_list})
 
     for _, row in eval_df.iterrows():
         user_id = int(row["userId"])
@@ -132,9 +106,10 @@ def evaluate_split(
 
         rows.append(user_result)
 
-    summary = {}
-    for metric_name, values in metrics.items():
-        summary[metric_name] = float(sum(values) / len(values)) if values else 0.0
+    summary = {
+        metric: float(sum(values) / len(values)) if values else 0.0
+        for metric, values in metrics.items()
+    }
 
     summary["n_users_evaluated"] = int(len(eval_df))
     per_user_df = pd.DataFrame(rows)
@@ -143,20 +118,34 @@ def evaluate_split(
 
 
 def main():
-    for path in [TRAIN_FILE, VAL_FILE, TEST_FILE]:
+    s = load_settings()
+
+    base = s.paths.processed
+
+    train_file = base / "ratings_train.csv"
+    val_file = base / "ratings_val.csv"
+    test_file = base / "ratings_test.csv"
+
+    output_dir = base / "baseline_popularity"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for path in [train_file, val_file, test_file]:
         if not path.exists():
             raise FileNotFoundError(f"File non trovato: {path}")
 
-    train, val, test = load_data()
+    print(f"[08] dataset={s.dataset}")
+    print(f"[08] base path={base}")
 
-    print("=== INPUT DATA ===")
+    train, val, test = load_data(train_file, val_file, test_file)
+
+    print("\n=== INPUT DATA ===")
     print(f"train: {len(train)} ratings | users={train['userId'].nunique()} | items={train['movieId'].nunique()}")
     print(f"val:   {len(val)} ratings | users={val['userId'].nunique()} | items={val['movieId'].nunique()}")
     print(f"test:  {len(test)} ratings | users={test['userId'].nunique()} | items={test['movieId'].nunique()}")
 
     ranking_df = build_popularity_ranking(train, MIN_VOTES)
 
-    ranking_path = OUTPUT_DIR / "popularity_ranking.csv"
+    ranking_path = output_dir / "popularity_ranking.csv"
     ranking_df.to_csv(ranking_path, index=False)
 
     print("\n=== POPULARITY RANKING ===")
@@ -166,16 +155,16 @@ def main():
     val_summary, val_per_user = evaluate_split(train, val, ranking_df, TOP_K_LIST)
     test_summary, test_per_user = evaluate_split(train, test, ranking_df, TOP_K_LIST)
 
-    val_per_user_path = OUTPUT_DIR / "val_per_user_metrics.csv"
-    test_per_user_path = OUTPUT_DIR / "test_per_user_metrics.csv"
-    summary_path = OUTPUT_DIR / "summary_metrics.json"
+    val_per_user_path = output_dir / "val_per_user_metrics.csv"
+    test_per_user_path = output_dir / "test_per_user_metrics.csv"
+    summary_path = output_dir / "summary_metrics.json"
 
     val_per_user.to_csv(val_per_user_path, index=False)
     test_per_user.to_csv(test_per_user_path, index=False)
 
     summary = {
         "config": {
-            "dataset": DATASET,
+            "dataset": s.dataset,
             "top_k_list": TOP_K_LIST,
             "min_votes": MIN_VOTES,
             "scoring": "imdb_weighted_rating"

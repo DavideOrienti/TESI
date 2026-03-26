@@ -14,5 +14,10 @@ tmdb:
   max_retries: 3
   backoff_sec: 1.0
 
+filters:
+  min_user_ratings: 8
+  min_item_ratings: 8
+  iterative_filtering: true
+
 movies:
   clean_year_regex: "\\((\\d{4})\\)$"

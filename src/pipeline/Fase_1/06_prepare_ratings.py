@@ -1,23 +1,7 @@
 from __future__ import annotations
-from pathlib import Path
 import pandas as pd
 
-# =========================
-# CONFIG
-# =========================
-DATASET = "small"   # "small" oppure "20m"
-
-RAW_BASE = Path(f"data/raw/ml-latest-{DATASET}" if DATASET == "small" else "data/raw/ml-20m")
-PROCESSED_BASE = Path(f"data/processed/{DATASET}")
-
-INPUT_FILE = RAW_BASE / "ratings.csv"
-OUTPUT_FILE = PROCESSED_BASE / "ratings_prepared.csv"
-#questi  numeri solo perche sono sullo small ricordare dopo nel 2M di mert
-MIN_USER_RATINGS = 8
-MIN_ITEM_RATINGS = 8
-
-# Se True, ripete i filtri finché il dataset si stabilizza
-ITERATIVE_FILTERING = True
+from src.utils.io import load_settings
 
 
 def print_basic_stats(df: pd.DataFrame, label: str) -> None:
@@ -46,12 +30,10 @@ def validate_columns(df: pd.DataFrame) -> None:
 
 
 def filter_once(df: pd.DataFrame, min_user_ratings: int, min_item_ratings: int) -> pd.DataFrame:
-    # Filtra utenti con almeno min_user_ratings
     user_counts = df["userId"].value_counts()
     valid_users = user_counts[user_counts >= min_user_ratings].index
     df = df[df["userId"].isin(valid_users)].copy()
 
-    # Filtra film con almeno min_item_ratings
     item_counts = df["movieId"].value_counts()
     valid_items = item_counts[item_counts >= min_item_ratings].index
     df = df[df["movieId"].isin(valid_items)].copy()
@@ -74,44 +56,60 @@ def iterative_filter(df: pd.DataFrame, min_user_ratings: int, min_item_ratings: 
 
 
 def main():
-    PROCESSED_BASE.mkdir(parents=True, exist_ok=True)
+    s = load_settings()
 
-    if not INPUT_FILE.exists():
-        raise FileNotFoundError(f"File non trovato: {INPUT_FILE}")
+    input_file = s.paths.raw / "ratings.csv"
+    output_file = s.paths.processed / "ratings_prepared.csv"
 
-    print(f"[06] loading ratings from: {INPUT_FILE}")
-    df = pd.read_csv(INPUT_FILE)
+    min_user_ratings = s.filters.min_user_ratings
+    min_item_ratings = s.filters.min_item_ratings
+    iterative_filtering = s.filters.iterative_filtering
+
+    s.paths.processed.mkdir(parents=True, exist_ok=True)
+
+    if not input_file.exists():
+        raise FileNotFoundError(f"File non trovato: {input_file}")
+
+    print(f"[06] dataset={s.dataset}")
+    print(f"[06] loading ratings from: {input_file}")
+    print(
+        f"[06] config -> min_user_ratings={min_user_ratings}, "
+        f"min_item_ratings={min_item_ratings}, iterative_filtering={iterative_filtering}"
+    )
+
+    df = pd.read_csv(input_file)
 
     validate_columns(df)
 
-    # Cast robusto
     df["userId"] = pd.to_numeric(df["userId"], errors="raise").astype(int)
     df["movieId"] = pd.to_numeric(df["movieId"], errors="raise").astype(int)
     df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
     df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
 
-    # Rimuovi righe corrotte
     before_drop = len(df)
     df = df.dropna(subset=["userId", "movieId", "rating", "timestamp"]).copy()
     dropped = before_drop - len(df)
     if dropped > 0:
         print(f"[06] removed corrupted rows: {dropped}")
 
+    # check opzionale sul range rating
+    bad_ratings = df[(df["rating"] < 0.5) | (df["rating"] > 5.0)]
+    print(f"[06] bad rating rows: {len(bad_ratings)}")
+    df = df[(df["rating"] >= 0.5) & (df["rating"] <= 5.0)].copy()
+
     df["timestamp"] = df["timestamp"].astype(int)
 
-    # Ordina temporalmente
     df = df.sort_values(["timestamp", "userId", "movieId"]).reset_index(drop=True)
 
     print_basic_stats(df, "RAW RATINGS")
 
-    if ITERATIVE_FILTERING:
-        filtered = iterative_filter(df, MIN_USER_RATINGS, MIN_ITEM_RATINGS)
+    if iterative_filtering:
+        filtered = iterative_filter(df, min_user_ratings, min_item_ratings)
     else:
-        filtered = filter_once(df, MIN_USER_RATINGS, MIN_ITEM_RATINGS)
+        filtered = filter_once(df, min_user_ratings, min_item_ratings)
 
     print_basic_stats(filtered, "FILTERED RATINGS")
 
-    # Controllo finale vincoli
     min_user_final = filtered["userId"].value_counts().min() if len(filtered) > 0 else 0
     min_item_final = filtered["movieId"].value_counts().min() if len(filtered) > 0 else 0
 
@@ -119,8 +117,8 @@ def main():
     print(f"min ratings per user: {min_user_final}")
     print(f"min ratings per item: {min_item_final}")
 
-    filtered.to_csv(OUTPUT_FILE, index=False)
-    print(f"\n[06] saved -> {OUTPUT_FILE}")
+    filtered.to_csv(output_file, index=False)
+    print(f"\n[06] saved -> {output_file}")
 
 
 if __name__ == "__main__":

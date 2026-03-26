@@ -1,34 +1,62 @@
 from __future__ import annotations
-from pathlib import Path
 import pandas as pd
 
-DATASET = "small"   # oppure "20m"
-BASE = Path(f"data/processed/{DATASET}")
+from src.utils.io import load_settings
+
+
+def non_empty_count(series: pd.Series) -> int:
+    return int(series.fillna("").astype(str).str.strip().ne("").sum())
+
 
 def main():
-    path = BASE / "movies_enriched_tmdb.csv"
+    s = load_settings()
+    path = s.paths.processed / "movies_enriched_tmdb.csv"
+
+    if not path.exists():
+        raise FileNotFoundError(f"File non trovato: {path}")
+
     df = pd.read_csv(path)
+    total = len(df)
 
     print("\n=== DATA AUDIT ===")
-    print(f"rows: {len(df)}")
+    print(f"dataset: {s.dataset}")
+    print(f"input file: {path}")
+    print(f"rows: {total}")
     print(f"unique movieId: {df['movieId'].nunique()}")
 
     if "tmdbId" in df.columns:
-        print(f"tmdbId non-null: {df['tmdbId'].notna().sum()}")
+        tmdb_nonnull = int(df["tmdbId"].notna().sum())
+        print(f"tmdbId non-null: {tmdb_nonnull} ({tmdb_nonnull / total:.2%})")
 
-    for col in ["title_clean", "year", "tags", "overview_it", "overview_en", "director", "actors_top5", "poster_url"]:
+    text_cols = [
+        "title_clean",
+        "tags",
+        "overview_it",
+        "overview_en",
+        "director",
+        "actors_top5",
+        "poster_url",
+    ]
+
+    for col in text_cols:
         if col in df.columns:
-            non_null = df[col].fillna("").astype(str).str.strip().ne("").sum()
-            print(f"{col}: {non_null} non-empty")
+            non_null = non_empty_count(df[col])
+            print(f"{col}: {non_null} non-empty ({non_null / total:.2%})")
 
-    # duplicati movieId
-    dup = df[df["movieId"].duplicated()]
-    print(f"duplicated movieId: {len(dup)}")
-
-    # anno anomalo
     if "year" in df.columns:
-        bad_year = df[(df["year"] != 0) & ((df["year"] < 1900) | (df["year"] > 2030))]
+        valid_year = int((df["year"] != 0).sum())
+        print(f"year valid: {valid_year} ({valid_year / total:.2%})")
+
+    dup = int(df["movieId"].duplicated().sum())
+    print(f"duplicated movieId: {dup}")
+
+    if "year" in df.columns:
+        bad_year = df[
+            (df["year"] != 0) &
+            ((df["year"] < 1900) | (df["year"] > 2030))
+        ]
         print(f"bad year rows: {len(bad_year)}")
+
 
 if __name__ == "__main__":
     main()

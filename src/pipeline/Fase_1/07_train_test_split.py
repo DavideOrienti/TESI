@@ -1,18 +1,7 @@
 from __future__ import annotations
-from pathlib import Path
 import pandas as pd
 
-# =========================
-# CONFIG
-# =========================
-DATASET = "small"
-
-BASE = Path(f"data/processed/{DATASET}")
-INPUT_FILE = BASE / "ratings_prepared.csv"
-
-TRAIN_FILE = BASE / "ratings_train.csv"
-VAL_FILE = BASE / "ratings_val.csv"
-TEST_FILE = BASE / "ratings_test.csv"
+from src.utils.io import load_settings
 
 
 def print_stats(df: pd.DataFrame, label: str) -> None:
@@ -33,10 +22,22 @@ def print_stats(df: pd.DataFrame, label: str) -> None:
 
 
 def main():
-    if not INPUT_FILE.exists():
-        raise FileNotFoundError(f"Input file non trovato: {INPUT_FILE}")
+    s = load_settings()
 
-    df = pd.read_csv(INPUT_FILE)
+    base = s.paths.processed
+    input_file = base / "ratings_prepared.csv"
+    train_file = base / "ratings_train.csv"
+    val_file = base / "ratings_val.csv"
+    test_file = base / "ratings_test.csv"
+    audit_file = base / "ratings_split_audit.csv"
+
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file non trovato: {input_file}")
+
+    print(f"[07] dataset={s.dataset}")
+    print(f"[07] loading input from: {input_file}")
+
+    df = pd.read_csv(input_file)
 
     required = {"userId", "movieId", "rating", "timestamp"}
     missing = required - set(df.columns)
@@ -103,13 +104,80 @@ def main():
         assert max_train <= min_val, f"Temporal leakage train-val per user {user_id}"
         assert min_val <= min_test, f"Temporal leakage val-test per user {user_id}"
 
-    train_df.to_csv(TRAIN_FILE, index=False)
-    val_df.to_csv(VAL_FILE, index=False)
-    test_df.to_csv(TEST_FILE, index=False)
+    # Audit unseen items
+    train_items = set(train_df["movieId"].unique())
+    val_items = set(val_df["movieId"].unique())
+    test_items = set(test_df["movieId"].unique())
 
-    print(f"\n[07] saved -> {TRAIN_FILE}")
-    print(f"[07] saved -> {VAL_FILE}")
-    print(f"[07] saved -> {TEST_FILE}")
+    val_unseen_items = val_items - train_items
+    test_unseen_items = test_items - train_items
+
+    print("\n=== SPLIT AUDIT ===")
+    print(f"train unique items: {len(train_items)}")
+    print(f"val unique items: {len(val_items)}")
+    print(f"test unique items: {len(test_items)}")
+    print(f"val unseen items vs train: {len(val_unseen_items)}")
+    print(f"test unseen items vs train: {len(test_unseen_items)}")
+
+    # Audit tabellare
+    audit_rows = [
+        {
+            "split": "full",
+            "ratings": len(df),
+            "users": df["userId"].nunique(),
+            "items": df["movieId"].nunique(),
+            "density": len(df) / (df["userId"].nunique() * df["movieId"].nunique())
+            if df["userId"].nunique() > 0 and df["movieId"].nunique() > 0 else 0.0,
+            "min_timestamp": df["timestamp"].min() if len(df) > 0 else None,
+            "max_timestamp": df["timestamp"].max() if len(df) > 0 else None,
+            "unseen_vs_train": 0,
+        },
+        {
+            "split": "train",
+            "ratings": len(train_df),
+            "users": train_df["userId"].nunique(),
+            "items": train_df["movieId"].nunique(),
+            "density": len(train_df) / (train_df["userId"].nunique() * train_df["movieId"].nunique())
+            if train_df["userId"].nunique() > 0 and train_df["movieId"].nunique() > 0 else 0.0,
+            "min_timestamp": train_df["timestamp"].min() if len(train_df) > 0 else None,
+            "max_timestamp": train_df["timestamp"].max() if len(train_df) > 0 else None,
+            "unseen_vs_train": 0,
+        },
+        {
+            "split": "val",
+            "ratings": len(val_df),
+            "users": val_df["userId"].nunique(),
+            "items": val_df["movieId"].nunique(),
+            "density": len(val_df) / (val_df["userId"].nunique() * val_df["movieId"].nunique())
+            if val_df["userId"].nunique() > 0 and val_df["movieId"].nunique() > 0 else 0.0,
+            "min_timestamp": val_df["timestamp"].min() if len(val_df) > 0 else None,
+            "max_timestamp": val_df["timestamp"].max() if len(val_df) > 0 else None,
+            "unseen_vs_train": len(val_unseen_items),
+        },
+        {
+            "split": "test",
+            "ratings": len(test_df),
+            "users": test_df["userId"].nunique(),
+            "items": test_df["movieId"].nunique(),
+            "density": len(test_df) / (test_df["userId"].nunique() * test_df["movieId"].nunique())
+            if test_df["userId"].nunique() > 0 and test_df["movieId"].nunique() > 0 else 0.0,
+            "min_timestamp": test_df["timestamp"].min() if len(test_df) > 0 else None,
+            "max_timestamp": test_df["timestamp"].max() if len(test_df) > 0 else None,
+            "unseen_vs_train": len(test_unseen_items),
+        },
+    ]
+
+    audit_df = pd.DataFrame(audit_rows)
+
+    train_df.to_csv(train_file, index=False)
+    val_df.to_csv(val_file, index=False)
+    test_df.to_csv(test_file, index=False)
+    audit_df.to_csv(audit_file, index=False)
+
+    print(f"\n[07] saved -> {train_file}")
+    print(f"[07] saved -> {val_file}")
+    print(f"[07] saved -> {test_file}")
+    print(f"[07] saved audit -> {audit_file}")
 
 
 if __name__ == "__main__":
