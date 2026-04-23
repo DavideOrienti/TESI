@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.utils.io import load_settings
-from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
+from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
 from src.recommenders.scoring import (
     build_user_seen_ratings,
     build_user_mean_ratings,
@@ -74,6 +74,8 @@ def evaluate_split(train, eval_df, candidate_items, neighbors_dict):
     metrics = {f"HR@{k}": [] for k in TOP_K_LIST}
     metrics.update({f"NDCG@{k}": [] for k in TOP_K_LIST})
     metrics.update({f"MRR@{k}": [] for k in TOP_K_LIST})
+    metrics.update({f"P@{k}": [] for k in TOP_K_LIST})
+    metrics.update({f"R@{k}": [] for k in TOP_K_LIST})
 
     for _, row in eval_df.iterrows():
         user_id = int(row["userId"])
@@ -85,6 +87,8 @@ def evaluate_split(train, eval_df, candidate_items, neighbors_dict):
             metrics[f"HR@{k}"].append(hit_rate_at_k(recs, gt, k))
             metrics[f"NDCG@{k}"].append(ndcg_at_k_single(recs, gt, k))
             metrics[f"MRR@{k}"].append(mrr_at_k_single(recs, gt, k))
+            metrics[f"P@{k}"].append(precision_at_k(recs, gt, k))
+            metrics[f"R@{k}"].append(recall_at_k(recs, gt, k))
 
     return {m: float(np.mean(v)) for m, v in metrics.items()}
 

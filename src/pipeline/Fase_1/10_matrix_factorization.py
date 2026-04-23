@@ -1,25 +1,15 @@
 from __future__ import annotations
-from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
-from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
+from src.utils.io import load_settings
+from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
 
 # =========================
 # CONFIG
 # =========================
-DATASET = "small"
-BASE = Path(f"data/processed/{DATASET}")
-
-TRAIN_FILE = BASE / "ratings_train.csv"
-VAL_FILE = BASE / "ratings_val.csv"
-TEST_FILE = BASE / "ratings_test.csv"
-
-OUTPUT_DIR = BASE / "baseline_matrix_factorization"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
 TOP_K_LIST = [5, 10, 20]
 
 N_FACTORS = 50
@@ -41,10 +31,10 @@ def print_stats(df: pd.DataFrame, label: str) -> None:
     print(f"density: {density:.6f}")
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    train = pd.read_csv(TRAIN_FILE)
-    val = pd.read_csv(VAL_FILE)
-    test = pd.read_csv(TEST_FILE)
+def load_data(train_file, val_file, test_file) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    train = pd.read_csv(train_file)
+    val = pd.read_csv(val_file)
+    test = pd.read_csv(test_file)
     return train, val, test
 
 
@@ -171,6 +161,8 @@ def evaluate_split(
     metrics = {f"HR@{k}": [] for k in top_k_list}
     metrics.update({f"NDCG@{k}": [] for k in top_k_list})
     metrics.update({f"MRR@{k}": [] for k in top_k_list})
+    metrics.update({f"P@{k}": [] for k in top_k_list})
+    metrics.update({f"R@{k}": [] for k in top_k_list})
 
     rows = []
 
@@ -196,17 +188,23 @@ def evaluate_split(
         }
 
         for k in top_k_list:
-            hr = hit_rate_at_k(recs, ground_truth, k)
+            hr   = hit_rate_at_k(recs, ground_truth, k)
             ndcg = ndcg_at_k_single(recs, ground_truth, k)
-            mrr = mrr_at_k_single(recs, ground_truth, k)
+            mrr  = mrr_at_k_single(recs, ground_truth, k)
+            p    = precision_at_k(recs, ground_truth, k)
+            r    = recall_at_k(recs, ground_truth, k)
 
             metrics[f"HR@{k}"].append(hr)
             metrics[f"NDCG@{k}"].append(ndcg)
             metrics[f"MRR@{k}"].append(mrr)
+            metrics[f"P@{k}"].append(p)
+            metrics[f"R@{k}"].append(r)
 
-            result_row[f"HR@{k}"] = hr
+            result_row[f"HR@{k}"]   = hr
             result_row[f"NDCG@{k}"] = ndcg
-            result_row[f"MRR@{k}"] = mrr
+            result_row[f"MRR@{k}"]  = mrr
+            result_row[f"P@{k}"]    = p
+            result_row[f"R@{k}"]    = r
 
         rows.append(result_row)
 
@@ -221,11 +219,23 @@ def evaluate_split(
 
 
 def main():
-    for p in [TRAIN_FILE, VAL_FILE, TEST_FILE]:
+    s = load_settings()
+    base = s.paths.processed
+
+    train_file = base / "ratings_train.csv"
+    val_file   = base / "ratings_val.csv"
+    test_file  = base / "ratings_test.csv"
+    output_dir = base / "baseline_pure_svd"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[10] dataset={s.dataset}")
+    print(f"[10] base path={base}")
+
+    for p in [train_file, val_file, test_file]:
         if not p.exists():
             raise FileNotFoundError(f"File non trovato: {p}")
 
-    train, val, test = load_data()
+    train, val, test = load_data(train_file, val_file, test_file)
 
     print_stats(train, "TRAIN")
     print_stats(val, "VAL")
@@ -233,7 +243,7 @@ def main():
 
     popularity_df = build_popularity_ranking(train, POPULARITY_MIN_VOTES)
     popularity_ranking = popularity_df["movieId"].tolist()
-    popularity_df.to_csv(OUTPUT_DIR / "fallback_popularity_ranking.csv", index=False)
+    popularity_df.to_csv(output_dir / "fallback_popularity_ranking.csv", index=False)
 
     user_item, user_means = build_user_item_matrix(train)
     print(f"\nuser-item matrix shape: {user_item.shape}")
@@ -250,7 +260,7 @@ def main():
 
     print(f"explained_variance_ratio_sum: {explained:.4f}")
 
-    pred_path = OUTPUT_DIR / "predicted_scores_matrix.csv"
+    pred_path = output_dir / "predicted_scores_matrix.csv"
     pred_df.to_csv(pred_path)
     print(f"saved predicted scores -> {pred_path}")
 
@@ -272,21 +282,21 @@ def main():
         top_k_list=TOP_K_LIST
     )
 
-    val_per_user_path = OUTPUT_DIR / "val_per_user_metrics.csv"
-    test_per_user_path = OUTPUT_DIR / "test_per_user_metrics.csv"
-    summary_path = OUTPUT_DIR / "summary_metrics.json"
+    val_per_user_path = output_dir / "val_per_user_metrics.csv"
+    test_per_user_path = output_dir / "test_per_user_metrics.csv"
+    summary_path = output_dir / "summary_metrics.json"
 
     val_per_user.to_csv(val_per_user_path, index=False)
     test_per_user.to_csv(test_per_user_path, index=False)
 
     summary = {
         "config": {
-            "dataset": DATASET,
+            "dataset": s.dataset,
             "top_k_list": TOP_K_LIST,
             "n_factors": n_factors,
             "random_state": RANDOM_STATE,
             "use_user_centering": USE_USER_CENTERING,
-            "model": "matrix_factorization_truncated_svd"
+            "model": "pure_svd_truncated"
         },
         "train": {
             "explained_variance_ratio_sum": explained

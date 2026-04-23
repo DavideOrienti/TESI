@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
+from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
 
 # =========================
 # CONFIG
@@ -294,6 +294,8 @@ def evaluate_split(
     metrics = {f"HR@{k}": [] for k in top_k_list}
     metrics.update({f"NDCG@{k}": [] for k in top_k_list})
     metrics.update({f"MRR@{k}": [] for k in top_k_list})
+    metrics.update({f"P@{k}": [] for k in top_k_list})
+    metrics.update({f"R@{k}": [] for k in top_k_list})
 
     rows = []
 
@@ -318,17 +320,23 @@ def evaluate_split(
         }
 
         for k in top_k_list:
-            hr = hit_rate_at_k(recs, ground_truth, k)
+            hr   = hit_rate_at_k(recs, ground_truth, k)
             ndcg = ndcg_at_k_single(recs, ground_truth, k)
-            mrr = mrr_at_k_single(recs, ground_truth, k)
+            mrr  = mrr_at_k_single(recs, ground_truth, k)
+            p    = precision_at_k(recs, ground_truth, k)
+            r    = recall_at_k(recs, ground_truth, k)
 
             metrics[f"HR@{k}"].append(hr)
             metrics[f"NDCG@{k}"].append(ndcg)
             metrics[f"MRR@{k}"].append(mrr)
+            metrics[f"P@{k}"].append(p)
+            metrics[f"R@{k}"].append(r)
 
-            result_row[f"HR@{k}"] = hr
+            result_row[f"HR@{k}"]   = hr
             result_row[f"NDCG@{k}"] = ndcg
-            result_row[f"MRR@{k}"] = mrr
+            result_row[f"MRR@{k}"]  = mrr
+            result_row[f"P@{k}"]    = p
+            result_row[f"R@{k}"]    = r
 
         rows.append(result_row)
 
