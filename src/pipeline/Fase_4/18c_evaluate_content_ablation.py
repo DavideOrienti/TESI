@@ -5,6 +5,11 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
+from src.recommenders.scoring import (
+    build_user_seen_ratings,
+    build_user_mean_ratings,
+    score_candidate_content,
+)
 
 
 VARIANT = "full"
@@ -43,32 +48,6 @@ def build_neighbors_dict(neighbors_df, index_to_movieid):
     return mapping
 
 
-def get_user_seen_ratings(train):
-    mapping = {}
-    for user_id, g in train.groupby("userId"):
-        mapping[int(user_id)] = {int(mid): float(r) for mid, r in zip(g["movieId"], g["rating"])}
-    return mapping
-
-
-def get_user_mean_ratings(train):
-    return {int(u): float(g["rating"].mean()) for u, g in train.groupby("userId")}
-
-
-def score_candidate(candidate_movie_id, seen_ratings, user_mean, neighbors_dict):
-    neighbors = neighbors_dict.get(candidate_movie_id, [])
-    num = 0.0
-    den = 0.0
-
-    for neighbor_movie_id, sim in neighbors:
-        if neighbor_movie_id not in seen_ratings or sim <= 0:
-            continue
-        centered = seen_ratings[neighbor_movie_id] - user_mean
-        num += sim * centered
-        den += abs(sim)
-
-    if den == 0.0:
-        return user_mean
-    return user_mean + (num / den)
 
 
 def recommend_top_k(user_id, candidate_items, user_seen_map, user_mean_map, neighbors_dict, k):
@@ -80,7 +59,7 @@ def recommend_top_k(user_id, candidate_items, user_seen_map, user_mean_map, neig
     for movie_id in candidate_items:
         if movie_id in seen_items:
             continue
-        score = score_candidate(movie_id, seen_ratings, user_mean, neighbors_dict)
+        score = score_candidate_content(movie_id, seen_ratings, user_mean, neighbors_dict)
         scored.append((movie_id, score))
 
     scored.sort(key=lambda x: (-x[1], x[0]))
@@ -88,8 +67,8 @@ def recommend_top_k(user_id, candidate_items, user_seen_map, user_mean_map, neig
 
 
 def evaluate_split(train, eval_df, candidate_items, neighbors_dict):
-    user_seen_map = get_user_seen_ratings(train)
-    user_mean_map = get_user_mean_ratings(train)
+    user_seen_map = build_user_seen_ratings(train)
+    user_mean_map = build_user_mean_ratings(train)
     max_k = max(TOP_K_LIST)
 
     metrics = {f"HR@{k}": [] for k in TOP_K_LIST}

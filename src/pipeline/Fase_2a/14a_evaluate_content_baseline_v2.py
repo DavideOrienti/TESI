@@ -5,6 +5,11 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single
+from src.recommenders.scoring import (
+    build_user_seen_ratings,
+    build_user_mean_ratings,
+    score_candidate_content,
+)
 
 
 TOP_K_LIST = [5, 10, 20]
@@ -72,61 +77,6 @@ def build_neighbors_dict(neighbors_df: pd.DataFrame, index_to_movieid: dict[int,
     return mapping
 
 
-def get_user_seen_ratings(train: pd.DataFrame) -> dict[int, dict[int, float]]:
-    mapping = {}
-    for user_id, g in train.groupby("userId"):
-        mapping[int(user_id)] = {
-            int(mid): float(r)
-            for mid, r in zip(g["movieId"], g["rating"])
-        }
-    return mapping
-
-
-def get_user_mean_ratings(train: pd.DataFrame) -> dict[int, float]:
-    return {
-        int(user_id): float(g["rating"].mean())
-        for user_id, g in train.groupby("userId")
-    }
-
-
-def score_candidate(
-    candidate_movie_id: int,
-    seen_ratings: dict[int, float],
-    user_mean_rating: float,
-    neighbors_dict: dict[int, list[tuple[int, float]]]
-) -> tuple[float, int]:
-    """
-    Score content-based:
-    - usa i top neighbors del candidato
-    - aggrega i film già visti dall'utente
-    - usa rating centrati
-    - riporta lo score nello spazio originale dei rating
-    """
-    neighbors = neighbors_dict.get(candidate_movie_id, [])
-
-    num = 0.0
-    den = 0.0
-    used_neighbors = 0
-
-    for neighbor_movie_id, sim in neighbors:
-        if neighbor_movie_id not in seen_ratings:
-            continue
-
-        if sim <= 0:
-            continue
-
-        rating = seen_ratings[neighbor_movie_id]
-        adjusted_rating = rating - user_mean_rating
-
-        num += sim * adjusted_rating
-        den += abs(sim)
-        used_neighbors += 1
-
-    if den == 0.0:
-        return user_mean_rating, used_neighbors
-
-    score = user_mean_rating + (num / den)
-    return score, used_neighbors
 
 
 def recommend_top_k_for_user(
@@ -148,11 +98,15 @@ def recommend_top_k_for_user(
         if movie_id in seen_items:
             continue
 
-        score, used_neighbors = score_candidate(
+        _neighbors = neighbors_dict.get(movie_id, [])
+        used_neighbors = sum(
+            1 for nm, sim in _neighbors if nm in seen_ratings and sim > 0
+        )
+        score = score_candidate_content(
             candidate_movie_id=movie_id,
             seen_ratings=seen_ratings,
             user_mean_rating=user_mean_rating,
-            neighbors_dict=neighbors_dict
+            content_neighbors_dict=neighbors_dict
         )
 
         if used_neighbors > 0:
@@ -172,8 +126,8 @@ def evaluate_split(
     neighbors_dict: dict[int, list[tuple[int, float]]],
     top_k_list: list[int]
 ):
-    user_seen_map = get_user_seen_ratings(train)
-    user_mean_map = get_user_mean_ratings(train)
+    user_seen_map = build_user_seen_ratings(train)
+    user_mean_map = build_user_mean_ratings(train)
     max_k = max(top_k_list)
 
     metrics = {f"HR@{k}": [] for k in top_k_list}
