@@ -3,6 +3,8 @@ import json
 import numpy as np
 import pandas as pd
 
+import argparse
+
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
 from src.recommenders.scoring import (
@@ -11,8 +13,16 @@ from src.recommenders.scoring import (
     score_candidate_content,
 )
 
-
-VARIANT = "full"
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--variant",
+    type=str,
+    choices=["full", "no_tags", "no_overview", "genres_only"],
+    required=True,
+    help="Variante della text representation per l'ablation study"
+)
+args = parser.parse_args()
+VARIANT = args.variant
 TOP_K_LIST = [5, 10, 20]
 OUTPUT_DIR_NAME = "content_ablation_results"
 

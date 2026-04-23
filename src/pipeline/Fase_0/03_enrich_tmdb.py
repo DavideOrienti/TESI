@@ -73,7 +73,13 @@ def main():
         if col not in df.columns:
             df[col] = None
 
-    todo = df["tmdbId"].notna() & df["actors_top5"].isna()
+    # tmdb_fetched = True dopo ogni chiamata completata (anche se i campi sono vuoti).
+    # Usare questo flag invece di actors_top5.isna() evita di rielaborare film che
+    # TMDB ha restituito legittimamente senza attori.
+    if "tmdb_fetched" not in df.columns:
+        df["tmdb_fetched"] = False
+
+    todo = df["tmdbId"].notna() & (~df["tmdb_fetched"])
     total_todo = int(todo.sum())
     print(f"[03] to_enrich={total_todo} / total={len(df)}")
 
@@ -86,6 +92,7 @@ def main():
             df.at[idx, "overview_it"] = ""
             df.at[idx, "overview_en"] = ""
             df.at[idx, "poster_url"] = ""
+            df.at[idx, "tmdb_fetched"] = True
             continue
 
         credits = client.movie_credits(tmdb_id)
@@ -105,6 +112,7 @@ def main():
         df.at[idx, "overview_it"] = overview_it
         df.at[idx, "overview_en"] = overview_en
         df.at[idx, "poster_url"] = poster_url
+        df.at[idx, "tmdb_fetched"] = True
 
         if (int(idx) + 1) % 300 == 0:
             df.to_csv(out_path, index=False)

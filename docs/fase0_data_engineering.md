@@ -1,4 +1,22 @@
 
+# Stato di implementazione
+
+## Implementato e funzionante
+
+- **Step 01** — `01_clean_movielens.py`: pulizia titoli, estrazione anno, filtro rating
+- **Step 02** — `02_merge_tags.py` / `02_merge_tags_tf-idf.py` / `02b_merge_links.py`: integrazione tag e link TMDB
+- **Step 03** — `03_enrich_tmdb.py`: arricchimento via API TMDB (attori, regista, overview, poster)
+- **Step 04** — `04_build_people_tables.py`: costruzione tabelle attori e registi
+- **Step 05** — `05_data_audit.py`: audit di copertura e qualità del dataset
+- **Step 06** — `06_prepare_ratings.py` (Fase 1): preparazione rating per il training
+
+## Pianificato / da implementare
+
+- **Import database SQLAlchemy** (`src/webapp/import_movielens.py`): importazione dei CSV prodotti in un database SQLite tramite i modelli definiti in `src/webapp/models.py`
+- **Web app** (`src/webapp/`): interfaccia FastAPI per il serving delle raccomandazioni; struttura presente ma non integrata con la pipeline
+- **Explainability**: giustificazione delle raccomandazioni all'utente (es. "consigliato perché hai visto X")
+
+---
 
 # FASE 0 — DATA ENGINEERING
 

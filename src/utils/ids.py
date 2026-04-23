@@ -7,10 +7,9 @@ def normalize_name(name: str) -> str:
     return name
 
 def stable_int_id(namespace: str, value: str) -> int:
-    """
-    ID deterministico (32-bit) da stringa.
-    Nota: collisioni possibili ma rare su questa scala; per essere più sicuri puoi usare 64-bit.
-    """
+    """ID deterministico 64-bit da stringa tramite SHA-256.
+    Usa 64-bit (invece di 32-bit) per ridurre la probabilità di collisione
+    secondo il birthday problem: sicuro fino a ~2^31 entità (~2 miliardi)."""
     s = f"{namespace}::{normalize_name(value).lower()}".encode("utf-8")
-    h = hashlib.sha1(s).hexdigest()[:8]  # 32-bit
-    return int(h, 16)
+    h = hashlib.sha256(s).hexdigest()[:16]  # 64-bit
+    return int(h, 16) % (2**63)             # safe positive int64

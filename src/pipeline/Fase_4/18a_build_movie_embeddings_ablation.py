@@ -1,12 +1,21 @@
 from __future__ import annotations
+import argparse
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
 from src.utils.io import load_settings
 
-
-VARIANT = "full"  # full | no_tags | no_overview | genres_only
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--variant",
+    type=str,
+    choices=["full", "no_tags", "no_overview", "genres_only"],
+    required=True,
+    help="Variante della text representation per l'ablation study"
+)
+args = parser.parse_args()
+VARIANT = args.variant
 
 
 def normalize_text(value: object) -> str:
