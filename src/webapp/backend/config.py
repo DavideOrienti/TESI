@@ -12,12 +12,13 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "jwt-dev-secret")
     JWT_ACCESS_TOKEN_EXPIRES = 86400  # 24 ore
 
-    # Database: in produzione usa /tmp/ (filesystem efimero su Render)
-    _db_path = os.environ.get(
-        "DATABASE_URL",
-        str(BASE_DIR / "src" / "webapp" / "backend" / "database.db"),
-    )
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{_db_path}"
+    # Su Render il filesystem è read-only tranne /tmp/
+    # In locale usiamo la cartella del progetto
+    if os.environ.get("RENDER"):
+        DB_PATH = "/tmp/cinerec.db"
+    else:
+        DB_PATH = str(Path(__file__).resolve().parent / "database.db")
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DB_PATH}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Artefatti recommender — deploy_artifacts ha la precedenza
