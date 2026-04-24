@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 
 from .models import db, Movie, Rating, Favorite
 from .auth import token_required
 from . import recommender_service
 
 movies_bp = Blueprint("movies", __name__)
+
+
+@movies_bp.route("", methods=["OPTIONS"])
+@movies_bp.route("/<int:movie_id>", methods=["OPTIONS"])
+@movies_bp.route("/<int:movie_id>/rate", methods=["OPTIONS"])
+@movies_bp.route("/<int:movie_id>/favorite", methods=["OPTIONS"])
+def options_handler(**kwargs):
+    return make_response("", 200)
 
 
 def _movie_to_dict(movie: Movie) -> dict:

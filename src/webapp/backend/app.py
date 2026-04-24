@@ -1,4 +1,4 @@
-from flask import Flask, request, make_response
+from flask import Flask, request
 from .config import Config
 from .models import db
 from .auth import auth_bp
@@ -23,18 +23,6 @@ def create_app():
     frontend_url = os.environ.get("FRONTEND_URL", "")
     if frontend_url and frontend_url not in ALLOWED_ORIGINS:
         ALLOWED_ORIGINS.append(frontend_url.rstrip("/"))
-
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            origin = request.headers.get("Origin", "")
-            if origin in ALLOWED_ORIGINS:
-                res = make_response("", 200)
-                res.headers["Access-Control-Allow-Origin"] = origin
-                res.headers["Access-Control-Allow-Credentials"] = "true"
-                res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-                res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-                return res
 
     @app.after_request
     def add_cors_headers(response):

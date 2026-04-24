@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
 
 from .models import db, Movie, Rating, Favorite
 from .auth import token_required
 
 profile_bp = Blueprint("profile", __name__)
+
+
+@profile_bp.route("/ratings", methods=["OPTIONS"])
+@profile_bp.route("/favorites", methods=["OPTIONS"])
+def options_handler():
+    return make_response("", 200)
 
 
 @profile_bp.route("/ratings", methods=["GET"])

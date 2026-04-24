@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 
 from .models import db, Movie, Rating, Favorite, User
 from .auth import token_required
 from . import recommender_service
 
 recs_bp = Blueprint("recommendations", __name__)
+
+
+@recs_bp.route("", methods=["OPTIONS"])
+@recs_bp.route("/popular", methods=["OPTIONS"])
+@recs_bp.route("/social", methods=["OPTIONS"])
+def options_handler():
+    return make_response("", 200)
 
 
 def _enrich(rec: dict) -> dict | None:

@@ -3,12 +3,19 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from .models import db, User
 
 auth_bp = Blueprint("auth", __name__)
+
+
+@auth_bp.route("/register", methods=["OPTIONS"])
+@auth_bp.route("/login", methods=["OPTIONS"])
+@auth_bp.route("/me", methods=["OPTIONS"])
+def options_handler():
+    return make_response("", 200)
 
 
 # ---------------------------------------------------------------------------
