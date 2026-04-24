@@ -1,39 +1,50 @@
-from __future__ import annotations
-import math
-import os
-import pandas as pd
-
-from flask import Flask
-from flask_cors import CORS
-
+from flask import Flask, request, make_response
 from .config import Config
 from .models import db
 from .auth import auth_bp
 from .movies import movies_bp
 from .recommendations import recs_bp
 from .profile import profile_bp
-from . import recommender_service
+import math
+import pandas as pd
+import os
+
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://tesi-ten.vercel.app",
+]
 
 
-def create_app() -> Flask:
+def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    allowed_origins = [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://tesi-ten.vercel.app",
-        "https://tesi-ten.vercel.app/",
-    ]
     frontend_url = os.environ.get("FRONTEND_URL", "")
-    if frontend_url and frontend_url not in allowed_origins:
-        allowed_origins.append(frontend_url)
+    if frontend_url and frontend_url not in ALLOWED_ORIGINS:
+        ALLOWED_ORIGINS.append(frontend_url.rstrip("/"))
 
-    CORS(app,
-         origins=allowed_origins,
-         allow_headers=["Content-Type", "Authorization"],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         supports_credentials=True)
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            origin = request.headers.get("Origin", "")
+            if origin in ALLOWED_ORIGINS:
+                res = make_response("", 200)
+                res.headers["Access-Control-Allow-Origin"] = origin
+                res.headers["Access-Control-Allow-Credentials"] = "true"
+                res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+                return res
+
+    @app.after_request
+    def add_cors_headers(response):
+        origin = request.headers.get("Origin", "")
+        if origin in ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        return response
 
     db.init_app(app)
 
@@ -50,13 +61,13 @@ def create_app() -> Flask:
             _import_movies_from_csv(app)
             print(f"[app] imported {Movie.query.count()} movies")
 
+        from . import recommender_service
         recommender_service.init(app.config)
 
     return app
 
 
 def _nan_to_none(val):
-    """Converte NaN/float nan in None per SQLite."""
     if val is None:
         return None
     try:
