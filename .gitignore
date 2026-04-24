@@ -4,9 +4,32 @@
 data/raw/**
 data/processed/**
 
+# Fallback CSV non necessario in produzione (parquet è sufficiente)
+data/deploy_artifacts/predicted_scores_matrix.csv
+
+# =============================
+# DATABASE LOCALE
+# =============================
+src/webapp/backend/database.db
+
 # =============================
 # ENVIRONMENT
 # =============================
 .env
 .venv/
 venv/
+
+# =============================
+# PYTHON
+# =============================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# =============================
+# NODE
+# =============================
+node_modules/
+src/webapp/frontend/dist/
