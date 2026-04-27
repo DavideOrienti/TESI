@@ -7,11 +7,23 @@ BASE_DIR = Path(os.environ.get(
     str(Path(__file__).resolve().parent.parent.parent.parent)
 ))
 
-# Database path — /tmp/ su Render, locale altrimenti
-_IS_RENDER = os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
-_DB_PATH = "/tmp/cinerec.db" if _IS_RENDER else str(
-    Path(__file__).resolve().parent / "database.db"
-)
+# Su Render usa PostgreSQL se DATABASE_URL è presente
+# In locale usa SQLite
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+if _DATABASE_URL:
+    # Render fornisce postgres:// ma SQLAlchemy vuole postgresql://
+    if _DATABASE_URL.startswith("postgres://"):
+        _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DB_URI = _DATABASE_URL
+else:
+    # Locale: SQLite nella cartella backend
+    _IS_RENDER = os.environ.get("RENDER", "")
+    if _IS_RENDER:
+        DB_URI = "sqlite:////tmp/cinerec.db"
+    else:
+        _LOCAL_DB = Path(__file__).resolve().parent / "database.db"
+        DB_URI = f"sqlite:///{_LOCAL_DB}"
 
 
 class Config:
@@ -19,7 +31,7 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "jwt-dev-secret")
     JWT_ACCESS_TOKEN_EXPIRES = 86400
 
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{_DB_PATH}"
+    SQLALCHEMY_DATABASE_URI = DB_URI
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Artefatti recommender
