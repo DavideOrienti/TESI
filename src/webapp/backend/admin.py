@@ -47,3 +47,4 @@ def stats():
         },
         "users": users_data,
     })
+
