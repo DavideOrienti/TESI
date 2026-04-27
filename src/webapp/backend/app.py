@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, make_response
 from .config import Config
 from .models import db
 from .auth import auth_bp
@@ -24,6 +24,25 @@ def create_app():
     if frontend_url and frontend_url not in ALLOWED_ORIGINS:
         ALLOWED_ORIGINS.append(frontend_url.rstrip("/"))
 
+    @app.route("/api/auth/register", methods=["OPTIONS"])
+    @app.route("/api/auth/login", methods=["OPTIONS"])
+    @app.route("/api/auth/me", methods=["OPTIONS"])
+    @app.route("/api/movies", methods=["OPTIONS"])
+    @app.route("/api/movies/<path:subpath>", methods=["OPTIONS"])
+    @app.route("/api/recommendations", methods=["OPTIONS"])
+    @app.route("/api/recommendations/<path:subpath>", methods=["OPTIONS"])
+    @app.route("/api/profile/<path:subpath>", methods=["OPTIONS"])
+    def handle_options(subpath=None):
+        origin = request.headers.get("Origin", "")
+        res = make_response("", 204)
+        if origin in ALLOWED_ORIGINS:
+            res.headers["Access-Control-Allow-Origin"] = origin
+            res.headers["Access-Control-Allow-Credentials"] = "true"
+            res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            res.headers["Access-Control-Max-Age"] = "0"
+        return res
+
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin", "")
@@ -32,6 +51,7 @@ def create_app():
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Max-Age"] = "0"
         return response
 
     db.init_app(app)
