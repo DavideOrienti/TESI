@@ -6,6 +6,7 @@ from .movies import movies_bp
 from .recommendations import recs_bp
 from .profile import profile_bp
 from .admin import admin_bp
+from .search import search_bp
 import math
 import pandas as pd
 import os
@@ -34,6 +35,7 @@ def create_app():
     @app.route("/api/recommendations/<path:subpath>", methods=["OPTIONS"])
     @app.route("/api/profile/<path:subpath>", methods=["OPTIONS"])
     @app.route("/api/admin/stats", methods=["OPTIONS"])
+    @app.route("/api/search/semantic", methods=["OPTIONS"])
     def handle_options(subpath=None):
         origin = request.headers.get("Origin", "")
         res = make_response("", 204)
@@ -63,6 +65,7 @@ def create_app():
     app.register_blueprint(recs_bp, url_prefix="/api/recommendations")
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(search_bp, url_prefix="/api/search")
 
     with app.app_context():
         db.create_all()
