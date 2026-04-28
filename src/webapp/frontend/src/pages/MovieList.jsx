@@ -9,7 +9,7 @@ const GENRES = [
 ]
 
 export default function MovieList() {
-  const [tab, setTab] = useState('title') // 'title' | 'semantic'
+  const [tab, setTab] = useState('title') // 'title' | 'semantic' | 'visual'
 
   // --- title search state ---
   const [movies, setMovies] = useState([])
@@ -25,6 +25,13 @@ export default function MovieList() {
   const [semanticQuery, setSemanticQuery] = useState('')
   const [semanticLoading, setSemanticLoading] = useState(false)
   const [semanticError, setSemanticError] = useState('')
+
+  // --- visual search state ---
+  const [visualFile, setVisualFile] = useState(null)
+  const [visualPreview, setVisualPreview] = useState(null)
+  const [visualResults, setVisualResults] = useState([])
+  const [visualLoading, setVisualLoading] = useState(false)
+  const [visualError, setVisualError] = useState('')
 
   // --- shared ---
   const [userRatings, setUserRatings] = useState({})
@@ -91,6 +98,42 @@ export default function MovieList() {
     }
   }
 
+  function handleVisualFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setVisualFile(file)
+    setVisualResults([])
+    setVisualError('')
+    const reader = new FileReader()
+    reader.onload = ev => setVisualPreview(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  async function handleVisualSearch() {
+    if (!visualFile) return
+    setVisualLoading(true)
+    setVisualError('')
+    setVisualResults([])
+    try {
+      const reader = new FileReader()
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = ev => resolve(ev.target.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(visualFile)
+      })
+      const res = await api.post('/visual/search', { image: base64, top_k: 10 })
+      setVisualResults(res.data.results ?? [])
+    } catch (err) {
+      if (err.response?.status === 503) {
+        setVisualError('Ricerca per immagine non disponibile (solo in locale).')
+      } else {
+        setVisualError('Errore durante la ricerca. Riprova.')
+      }
+    } finally {
+      setVisualLoading(false)
+    }
+  }
+
   async function handleRate(movieId, rating) {
     await api.post(`/movies/${movieId}/rate`, { rating })
     setUserRatings(prev => ({ ...prev, [movieId]: rating }))
@@ -128,6 +171,14 @@ export default function MovieList() {
           }`}
         >
           ✨ Concetto
+        </button>
+        <button
+          onClick={() => setTab('visual')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            tab === 'visual' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          🖼️ Foto locandina
         </button>
       </div>
 
@@ -256,6 +307,82 @@ export default function MovieList() {
 
           {!semanticLoading && semanticQuery && semanticResults.length === 0 && !semanticError && (
             <p className="text-gray-400 text-center py-12">Nessun risultato trovato per "{semanticQuery}"</p>
+          )}
+        </>
+      )}
+
+      {tab === 'visual' && (
+        <>
+          {/* Ricerca per foto locandina */}
+          <div className="mb-6">
+            <label className="flex items-center gap-3 cursor-pointer w-fit">
+              <span className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                📁 Carica foto locandina
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleVisualFileChange}
+              />
+            </label>
+            <p className="text-xs text-gray-500 mt-2">
+              Carica una foto di una locandina per trovare il film o film con poster simili
+            </p>
+          </div>
+
+          {visualPreview && (
+            <div className="flex items-start gap-6 mb-6">
+              <img
+                src={visualPreview}
+                alt="preview"
+                className="w-24 h-36 object-cover rounded-lg border border-gray-600"
+              />
+              <div className="flex flex-col gap-2">
+                <p className="text-gray-400 text-sm">{visualFile?.name}</p>
+                <button
+                  onClick={handleVisualSearch}
+                  disabled={visualLoading}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm transition-colors w-fit"
+                >
+                  {visualLoading ? '⟳ Analisi in corso...' : '🖼️ Cerca film simili'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {visualError && (
+            <p className="text-red-400 text-sm mb-4">{visualError}</p>
+          )}
+
+          {visualResults.length > 0 && (
+            <>
+              <p className="text-gray-400 text-sm mb-4">{visualResults.length} film con poster simile</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {visualResults.map(m => (
+                  <div key={m.movie_id} className="flex flex-col">
+                    <MovieCard
+                      movie={{ ...m, id: m.movie_id }}
+                      userRating={userRatings[m.movie_id]}
+                      isFavorite={favorites.has(m.movie_id)}
+                      onRate={handleRate}
+                      onFavorite={handleFavorite}
+                    />
+                    <div className="mt-1 px-1">
+                      <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-full">
+                        Somiglianza visiva: {Math.round(m.visual_similarity * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!visualLoading && !visualPreview && (
+            <p className="text-gray-500 text-center py-12">
+              Carica una locandina per iniziare la ricerca visiva
+            </p>
           )}
         </>
       )}

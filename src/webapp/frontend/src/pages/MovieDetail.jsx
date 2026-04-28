@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import StarRating from '../components/StarRating'
-import MovieCard from '../components/MovieCard'
 
 const FALLBACK = 'https://via.placeholder.com/300x450/1f2937/6b7280?text=No+Poster'
+const FALLBACK_SM = 'https://via.placeholder.com/150x225/1f2937/6b7280?text=?'
 
 export default function MovieDetail() {
   const { id } = useParams()
@@ -14,6 +14,10 @@ export default function MovieDetail() {
   const [isFavorite, setIsFavorite] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [similarTab, setSimilarTab] = useState('trama') // 'trama' | 'visual'
+  const [visualSimilar, setVisualSimilar] = useState(null)
+  const [visualLoading, setVisualLoading] = useState(false)
+  const [visualAvailable, setVisualAvailable] = useState(true)
 
   useEffect(() => {
     setLoading(true)
@@ -26,6 +30,20 @@ export default function MovieDetail() {
       .catch(err => setError(err.response?.status === 404 ? 'Film non trovato' : 'Errore di rete'))
       .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (similarTab !== 'visual' || visualSimilar !== null || !visualAvailable) return
+    setVisualLoading(true)
+    api.get(`/visual/similar/${id}?top_k=8`)
+      .then(res => setVisualSimilar(res.data.results ?? []))
+      .catch(err => {
+        if (err.response?.status === 503 || err.response?.status === 404) {
+          setVisualAvailable(false)
+        }
+        setVisualSimilar([])
+      })
+      .finally(() => setVisualLoading(false))
+  }, [similarTab, id, visualSimilar, visualAvailable])
 
   async function handleRate(v) {
     await api.post(`/movies/${id}/rate`, { rating: v })
@@ -48,6 +66,9 @@ export default function MovieDetail() {
   const { movie, similar_movies } = data
   const genres = movie.genres ? movie.genres.split('|') : []
   const actors = movie.actors_top5 ? movie.actors_top5.split(',').map(s => s.trim()) : []
+
+  const hasTrama = similar_movies?.length > 0
+  const hasVisual = visualAvailable
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -94,7 +115,6 @@ export default function MovieDetail() {
             <p className="text-gray-400 text-lg mt-1">{movie.year}</p>
           </div>
 
-          {/* Generi */}
           <div className="flex flex-wrap gap-2">
             {genres.map(g => (
               <span key={g} className="bg-indigo-900/50 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded-full text-sm">
@@ -121,54 +141,102 @@ export default function MovieDetail() {
         </div>
       </div>
 
-      {/* Film simili */}
-      {similar_movies?.length > 0 && (
+      {/* Film simili — tab trama / stile visivo */}
+      {(hasTrama || hasVisual) && (
         <section>
-          <h2 className="text-lg font-semibold text-white mb-4">Film simili</h2>
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {similar_movies.map(s => {
-              const m = data.__simMovies?.[s.movie_id]
-              return (
+          <div className="flex gap-1 bg-gray-800 rounded-lg p-1 mb-4 w-fit">
+            {hasTrama && (
+              <button
+                onClick={() => setSimilarTab('trama')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  similarTab === 'trama' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Film simili per trama
+              </button>
+            )}
+            {hasVisual && (
+              <button
+                onClick={() => setSimilarTab('visual')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  similarTab === 'visual' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                🎨 Stile visivo
+              </button>
+            )}
+          </div>
+
+          {similarTab === 'trama' && hasTrama && (
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {similar_movies.map(s => (
                 <div key={s.movie_id} className="flex-shrink-0 w-32">
                   <div
                     className="bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform"
                     onClick={() => navigate(`/movies/${s.movie_id}`)}
                   >
-                    <SimilarCard movieId={s.movie_id} similarity={s.similarity} />
+                    <SimilarCard movieId={s.movie_id} label={`${Math.round(s.similarity * 100)}% sim.`} />
                   </div>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {similarTab === 'visual' && (
+            visualLoading ? (
+              <div className="text-gray-400 text-sm py-4">Analisi stile visivo...</div>
+            ) : (
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {(visualSimilar ?? []).map(s => (
+                  <div key={s.movie_id} className="flex-shrink-0 w-32">
+                    <div
+                      className="bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform"
+                      onClick={() => navigate(`/movies/${s.movie_id}`)}
+                    >
+                      <SimilarCard
+                        movieId={s.movie_id}
+                        posterUrl={s.poster_url}
+                        title={s.title}
+                        label={`Somiglianza visiva: ${Math.round(s.visual_similarity * 100)}%`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
         </section>
       )}
     </main>
   )
 }
 
-function SimilarCard({ movieId, similarity }) {
-  const [movie, setMovie] = useState(null)
-  const FALLBACK = 'https://via.placeholder.com/150x225/1f2937/6b7280?text=?'
+function SimilarCard({ movieId, posterUrl, title, label }) {
+  const [movie, setMovie] = useState(posterUrl ? null : null)
+  const [resolved, setResolved] = useState(
+    posterUrl ? { poster_url: posterUrl, title_clean: title, title } : null
+  )
 
   useEffect(() => {
-    api.get(`/movies/${movieId}`).then(res => setMovie(res.data.movie)).catch(() => {})
-  }, [movieId])
+    if (resolved) return
+    api.get(`/movies/${movieId}`).then(res => setResolved(res.data.movie)).catch(() => {})
+  }, [movieId, resolved])
 
-  if (!movie) return (
+  if (!resolved) return (
     <div className="aspect-[2/3] bg-gray-700 animate-pulse rounded" />
   )
 
   return (
     <div>
       <img
-        src={movie.poster_url || FALLBACK}
-        alt={movie.title}
+        src={resolved.poster_url || FALLBACK_SM}
+        alt={resolved.title}
         className="w-full aspect-[2/3] object-cover rounded-t"
-        onError={e => { e.target.src = FALLBACK }}
+        onError={e => { e.target.src = FALLBACK_SM }}
       />
       <div className="p-2">
-        <p className="text-xs text-white line-clamp-2 leading-tight">{movie.title_clean || movie.title}</p>
-        <p className="text-xs text-gray-500 mt-0.5">{Math.round(similarity * 100)}% sim.</p>
+        <p className="text-xs text-white line-clamp-2 leading-tight">{resolved.title_clean || resolved.title}</p>
+        <p className="text-xs text-indigo-400 mt-0.5">{label}</p>
       </div>
     </div>
   )
