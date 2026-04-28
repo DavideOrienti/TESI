@@ -3,34 +3,69 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import os
-import requests as http_requests
 
 search_bp = Blueprint("search", __name__)
 
-_search_embeddings = None
+_tfidf_matrix = None
+_tfidf_vectorizer = None
 _search_index = None
 _search_ready = False
 
 
+def _build_search_text(row) -> str:
+    parts = []
+    for field in ("title_clean", "title"):
+        val = row.get(field)
+        if pd.notna(val) and str(val).strip():
+            parts.append(str(val))
+            break
+    if pd.notna(row.get("year")):
+        parts.append(str(int(row["year"])))
+    if pd.notna(row.get("genres")):
+        parts.append(str(row["genres"]).replace("|", " "))
+    if pd.notna(row.get("tags")):
+        parts.append(str(row["tags"]).replace(",", " "))
+    if pd.notna(row.get("director")):
+        parts.append(str(row["director"]))
+    if pd.notna(row.get("actors_top5")):
+        parts.append(str(row["actors_top5"]).replace("_", " "))
+    for ov_field in ("overview_it", "overview_en"):
+        val = row.get(ov_field)
+        if pd.notna(val) and len(str(val)) > 10:
+            parts.append(str(val))
+    return " ".join(parts)
+
+
 def _load_search_artefacts():
-    global _search_embeddings, _search_index, _search_ready
+    global _tfidf_matrix, _tfidf_vectorizer, _search_index, _search_ready
     try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
         base = Path(os.environ.get(
             "APP_BASE_DIR",
             str(Path(__file__).resolve().parent.parent.parent.parent)
         )) / "data" / "deploy_artifacts"
 
-        emb_path = base / "search_embeddings_minilm.npy"
-        idx_path = base / "search_embeddings_index.csv"
-
-        if not emb_path.exists():
-            print("[search] embeddings not found — semantic search disabled")
+        movies_path = base / "movies_enriched_tmdb.csv"
+        if not movies_path.exists():
+            print("[search] movies CSV not found — search disabled")
             return
 
-        _search_embeddings = np.load(str(emb_path))
-        _search_index = pd.read_csv(idx_path)
+        df = pd.read_csv(movies_path)
+        texts = [_build_search_text(row) for _, row in df.iterrows()]
+
+        _tfidf_vectorizer = TfidfVectorizer(
+            analyzer="word",
+            min_df=2,
+            ngram_range=(1, 2),
+            max_features=60_000,
+            sublinear_tf=True,
+        )
+        _tfidf_matrix = _tfidf_vectorizer.fit_transform(texts)
+        _search_index = df[["movieId"]].copy().reset_index(drop=True)
+
         _search_ready = True
-        print(f"[search] ready — {len(_search_index)} films indexed")
+        print(f"[search] TF-IDF ready — {len(_search_index)} films, matrix {_tfidf_matrix.shape}")
 
     except Exception as e:
         print(f"[search] load error: {e}")
@@ -39,49 +74,19 @@ def _load_search_artefacts():
 _load_search_artefacts()
 
 
-def _encode_via_hf_api(query: str) -> np.ndarray | None:
-    """Chiama Hugging Face Inference API — nessun modello caricato in locale."""
-    token = os.environ.get("HF_API_TOKEN", "")
-    if not token:
-        print("[search] HF_API_TOKEN not set")
-        return None
+@search_bp.route("/version")
+def search_version():
+    return jsonify({
+        "version": "tfidf_v1",
+        "search_ready": _search_ready,
+        "films_indexed": len(_search_index) if _search_index is not None else 0,
+        "matrix_shape": list(_tfidf_matrix.shape) if _tfidf_matrix is not None else None,
+    })
 
-    url = (
-        "https://api-inference.huggingface.co/pipeline/"
-        "feature-extraction/"
-        "sentence-transformers/paraphrase-MiniLM-L6-v2"
-    )
-    headers = {"Authorization": f"Bearer {token}"}
 
-    try:
-        resp = http_requests.post(
-            url,
-            headers=headers,
-            json={"inputs": query, "options": {"wait_for_model": True}},
-            timeout=30,
-        )
-        if resp.status_code != 200:
-            print(f"[search] HF API error: {resp.status_code}")
-            return None
-
-        data = resp.json()
-        arr = np.array(data, dtype=np.float32)
-
-        # HF restituisce shape (1, seq_len, dim) o (seq_len, dim)
-        if arr.ndim == 3:
-            arr = arr[0]       # → (seq_len, dim)
-        if arr.ndim == 2:
-            arr = arr.mean(axis=0)  # mean pooling → (dim,)
-
-        norm = np.linalg.norm(arr)
-        if norm > 1e-9:
-            arr = arr / norm
-
-        return arr
-
-    except Exception as e:
-        print(f"[search] HF API exception: {e}")
-        return None
+@search_bp.route("/version", methods=["OPTIONS"])
+def search_version_options():
+    return "", 200
 
 
 @search_bp.route("/semantic")
@@ -95,29 +100,19 @@ def semantic_search():
     if not _search_ready:
         return jsonify({"error": "search index not available"}), 503
 
-    embedding = _encode_via_hf_api(query)
-    if embedding is None:
-        return jsonify({
-            "error": "encoding service unavailable — retry in a moment",
-            "retry": True,
-        }), 503
+    from sklearn.metrics.pairwise import cosine_similarity
 
-    if embedding.shape[0] != _search_embeddings.shape[1]:
-        return jsonify({
-            "error": (
-                f"embedding dim mismatch: "
-                f"got {embedding.shape[0]}, "
-                f"expected {_search_embeddings.shape[1]}"
-            )
-        }), 500
+    q_vec = _tfidf_vectorizer.transform([query])
+    sims = cosine_similarity(q_vec, _tfidf_matrix)[0]
 
-    similarities = _search_embeddings @ embedding
-    top_indices = np.argsort(similarities)[::-1][:top_k]
+    top_indices = np.argsort(sims)[::-1][:top_k]
 
     results = []
     for idx in top_indices:
+        score = float(sims[idx])
+        if score < 0.01:
+            break
         movie_id = int(_search_index.iloc[idx]["movieId"])
-        score = float(similarities[idx])
         movie = _db_get_movie(movie_id)
         if movie:
             results.append({
@@ -134,7 +129,7 @@ def semantic_search():
         "query": query,
         "results": results,
         "n_results": len(results),
-        "model": "paraphrase-MiniLM-L6-v2 via HF API",
+        "model": "tfidf_v1",
     })
 
 
