@@ -55,10 +55,10 @@ def _load_search_artefacts():
         texts = [_build_search_text(row) for _, row in df.iterrows()]
 
         _tfidf_vectorizer = TfidfVectorizer(
-            analyzer="word",
+            max_features=10_000,
+            ngram_range=(1, 1),
             min_df=2,
-            ngram_range=(1, 2),
-            max_features=60_000,
+            max_df=0.95,
             sublinear_tf=True,
         )
         _tfidf_matrix = _tfidf_vectorizer.fit_transform(texts)
