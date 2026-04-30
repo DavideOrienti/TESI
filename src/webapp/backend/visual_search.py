@@ -171,19 +171,37 @@ def _recognize_clip(img_pil, top_k=10):
 
 @visual_bp.route("/search", methods=["POST"])
 def search_by_image():
-    data = request.get_json()
-    if not data or "image" not in data:
-        return jsonify({"error": "image field required (base64)"}), 400
+    print(f"[visual/search] Content-Type: {request.content_type}")
+    print(f"[visual/search] Content-Length: {request.content_length}")
 
-    top_k = min(int(data.get("top_k", 10)), 20)
+    data = request.get_json(silent=True)
+    if data is None:
+        raw = request.get_data(as_text=True)
+        print(f"[visual/search] get_json failed, raw[:100]: {raw[:100]}")
+        return jsonify({"error": "invalid JSON", "content_type": request.content_type}), 400
+
+    if "image" not in data:
+        print(f"[visual/search] missing image field, keys: {list(data.keys())}")
+        return jsonify({"error": "image field required (base64)", "received_keys": list(data.keys())}), 400
+
+    image_b64 = data["image"]
+    print(f"[visual/search] image b64 length: {len(image_b64)}")
+    print(f"[visual/search] image b64 prefix: {image_b64[:30]}")
+
+    top_k = min(int(data.get("top_k", 5)), 20)
 
     try:
         from PIL import Image as PILImage
-        img_data = base64.b64decode(data["image"])
+        img_data = base64.b64decode(image_b64)
+        print(f"[visual/search] decoded bytes: {len(img_data)}")
         img = PILImage.open(io.BytesIO(img_data)).convert("RGB")
         img = img.resize((224, 224), PILImage.LANCZOS)
+        print(f"[visual/search] image resized OK")
     except Exception as e:
+        print(f"[visual/search] image decode/open error: {e}")
         return jsonify({"error": f"invalid image: {e}"}), 400
+
+    print(f"[visual/search] IS_RENDER={IS_RENDER}, routing to {'phash' if IS_RENDER else 'clip'}")
 
     if IS_RENDER:
         recognized, similar = _recognize_phash(img, top_k)
@@ -191,6 +209,8 @@ def search_by_image():
     else:
         recognized, similar = _recognize_clip(img, top_k)
         method_used = "clip"
+
+    print(f"[visual/search] recognized={recognized is not None}, n_similar={len(similar)}")
 
     if not recognized:
         return jsonify({
