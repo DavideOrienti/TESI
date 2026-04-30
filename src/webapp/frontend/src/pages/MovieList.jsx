@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import MovieCard from '../components/MovieCard'
 
@@ -9,6 +10,7 @@ const GENRES = [
 ]
 
 export default function MovieList() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState('title') // 'title' | 'semantic' | 'visual'
 
   // --- title search state ---
@@ -29,9 +31,12 @@ export default function MovieList() {
   // --- visual search state ---
   const [visualFile, setVisualFile] = useState(null)
   const [visualPreview, setVisualPreview] = useState(null)
-  const [visualResults, setVisualResults] = useState([])
+  const [visualRecognized, setVisualRecognized] = useState(null)
+  const [visualSimilar, setVisualSimilar] = useState([])
+  const [visualContentSimilar, setVisualContentSimilar] = useState([])
   const [visualLoading, setVisualLoading] = useState(false)
   const [visualError, setVisualError] = useState('')
+  const [visualNotFound, setVisualNotFound] = useState(false)
 
   // --- shared ---
   const [userRatings, setUserRatings] = useState({})
@@ -102,8 +107,11 @@ export default function MovieList() {
     const file = e.target.files?.[0]
     if (!file) return
     setVisualFile(file)
-    setVisualResults([])
+    setVisualRecognized(null)
+    setVisualSimilar([])
+    setVisualContentSimilar([])
     setVisualError('')
+    setVisualNotFound(false)
     const reader = new FileReader()
     reader.onload = ev => setVisualPreview(ev.target.result)
     reader.readAsDataURL(file)
@@ -113,7 +121,10 @@ export default function MovieList() {
     if (!visualFile) return
     setVisualLoading(true)
     setVisualError('')
-    setVisualResults([])
+    setVisualRecognized(null)
+    setVisualSimilar([])
+    setVisualContentSimilar([])
+    setVisualNotFound(false)
     try {
       const reader = new FileReader()
       const base64 = await new Promise((resolve, reject) => {
@@ -121,11 +132,21 @@ export default function MovieList() {
         reader.onerror = reject
         reader.readAsDataURL(visualFile)
       })
-      const res = await api.post('/visual/search', { image: base64, top_k: 10 })
-      setVisualResults(res.data.results ?? [])
+      const res = await api.post('/visual/search', { image: base64, top_k: 5 })
+      const recognized = res.data.recognized_movie ?? null
+      setVisualRecognized(recognized)
+      setVisualSimilar(res.data.similar_movies ?? [])
+      // Fetch film simili per trama dal riconosciuto
+      if (recognized?.movie_id) {
+        api.get(`/movies/${recognized.movie_id}`)
+          .then(r => setVisualContentSimilar(r.data.similar_movies?.slice(0, 6) ?? []))
+          .catch(() => {})
+      }
     } catch (err) {
-      if (err.response?.status === 503) {
-        setVisualError('Ricerca per immagine non disponibile (solo in locale).')
+      if (err.response?.status === 404) {
+        setVisualNotFound(true)
+      } else if (err.response?.status === 503) {
+        setVisualError('Ricerca per immagine non disponibile in questo momento.')
       } else {
         setVisualError('Errore durante la ricerca. Riprova.')
       }
@@ -313,18 +334,13 @@ export default function MovieList() {
 
       {tab === 'visual' && (
         <>
-          {/* Ricerca per foto locandina */}
+          {/* Upload */}
           <div className="mb-6">
             <label className="flex items-center gap-3 cursor-pointer w-fit">
               <span className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                 📁 Carica foto locandina
               </span>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleVisualFileChange}
-              />
+              <input type="file" accept="image/*" className="hidden" onChange={handleVisualFileChange} />
             </label>
             <p className="text-xs text-gray-500 mt-2">
               Carica una foto di una locandina per trovare il film o film con poster simili
@@ -345,22 +361,42 @@ export default function MovieList() {
                   disabled={visualLoading}
                   className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm transition-colors w-fit"
                 >
-                  {visualLoading ? '⟳ Analisi in corso...' : '🖼️ Cerca film simili'}
+                  {visualLoading ? '⟳ Analisi in corso...' : '🖼️ Riconosci film'}
                 </button>
               </div>
             </div>
           )}
 
-          {visualError && (
-            <p className="text-red-400 text-sm mb-4">{visualError}</p>
+          {visualError && <p className="text-red-400 text-sm mb-4">{visualError}</p>}
+
+          {visualNotFound && (
+            <p className="text-yellow-400 text-sm mb-4">
+              Film non riconosciuto — prova con una foto più nitida o un'angolazione diversa.
+            </p>
           )}
 
-          {visualResults.length > 0 && (
-            <>
-              <p className="text-gray-400 text-sm mb-4">{visualResults.length} film con poster simile</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {visualResults.map(m => (
-                  <div key={m.movie_id} className="flex flex-col">
+          {/* Sezione 1 — Film riconosciuto */}
+          {visualRecognized && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-white mb-4">Film riconosciuto</h2>
+              <VisualRecognizedCard
+                movie={visualRecognized}
+                navigate={navigate}
+                userRatings={userRatings}
+                favorites={favorites}
+                onRate={handleRate}
+                onFavorite={handleFavorite}
+              />
+            </div>
+          )}
+
+          {/* Sezione 2 — Film con poster simili (riga scrollabile, max 5) */}
+          {visualSimilar.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-white mb-4">Film con poster simili</h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {visualSimilar.slice(0, 5).map(m => (
+                  <div key={m.movie_id} className="flex-shrink-0 w-36 flex flex-col">
                     <MovieCard
                       movie={{ ...m, id: m.movie_id }}
                       userRating={userRatings[m.movie_id]}
@@ -376,7 +412,26 @@ export default function MovieList() {
                   </div>
                 ))}
               </div>
-            </>
+            </div>
+          )}
+
+          {/* Sezione 3 — Ti potrebbe piacere anche (simili per trama) */}
+          {visualContentSimilar.length > 0 && visualRecognized && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-white mb-4">
+                Ti potrebbe piacere anche —{' '}
+                <span className="text-gray-400 font-normal">basato sulla trama di {visualRecognized.title}</span>
+              </h2>
+              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                {visualContentSimilar.map(s => (
+                  <ContentSimilarCard
+                    key={s.movie_id}
+                    movieId={s.movie_id}
+                    navigate={navigate}
+                  />
+                ))}
+              </div>
+            </div>
           )}
 
           {!visualLoading && !visualPreview && (
@@ -387,5 +442,107 @@ export default function MovieList() {
         </>
       )}
     </main>
+  )
+}
+
+const FALLBACK_POSTER = 'https://via.placeholder.com/300x450/1f2937/6b7280?text=No+Poster'
+
+function VisualRecognizedCard({ movie, navigate }) {
+  const genres = movie.genres ? movie.genres.split('|') : []
+  const actors = movie.actors_top5 ? movie.actors_top5.split(',').map(s => s.trim()) : []
+  const overview = movie.overview_en
+    ? movie.overview_en.length > 200 ? movie.overview_en.slice(0, 200) + '...' : movie.overview_en
+    : null
+  const confidence = Math.round((movie.similarity ?? 0) * 100)
+  const methodLabel = movie.method === 'clip' ? 'CLIP' : 'phash'
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-4 flex flex-col sm:flex-row gap-6 border border-gray-700">
+      <img
+        src={movie.poster_url || FALLBACK_POSTER}
+        alt={movie.title}
+        className="w-32 rounded-lg flex-shrink-0 self-start"
+        onError={e => { e.target.src = FALLBACK_POSTER }}
+      />
+      <div className="flex flex-col gap-2 flex-1">
+        <div className="flex flex-wrap gap-2 items-center">
+          <h3 className="text-xl font-bold text-white">{movie.title}</h3>
+          {movie.year && <span className="text-gray-400">{movie.year}</span>}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {genres.map(g => (
+            <span key={g} className="bg-indigo-900/50 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full text-xs">
+              {g}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded-full">
+            Riconosciuto con {confidence}% di confidenza
+          </span>
+          <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">
+            {methodLabel}
+          </span>
+        </div>
+
+        {movie.director && (
+          <p className="text-gray-400 text-sm">
+            <span className="text-gray-500">Regia </span>{movie.director}
+          </p>
+        )}
+        {actors.length > 0 && (
+          <p className="text-gray-400 text-sm">
+            <span className="text-gray-500">Con </span>{actors.slice(0, 3).join(', ')}
+          </p>
+        )}
+        {overview && <p className="text-gray-500 text-sm leading-relaxed">{overview}</p>}
+
+        <button
+          onClick={() => navigate(`/movies/${movie.movie_id}`)}
+          className="mt-2 w-fit bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+        >
+          Vai alla scheda film →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const FALLBACK_SMALL = 'https://via.placeholder.com/150x225/1f2937/6b7280?text=?'
+
+function ContentSimilarCard({ movieId, navigate }) {
+  const [movie, setMovie] = useState(null)
+
+  useEffect(() => {
+    api.get(`/movies/${movieId}`).then(r => setMovie(r.data.movie)).catch(() => {})
+  }, [movieId])
+
+  if (!movie) return <div className="aspect-[2/3] bg-gray-700 animate-pulse rounded-lg" />
+
+  const genres = movie.genres ? movie.genres.split('|').slice(0, 2) : []
+
+  return (
+    <div
+      className="cursor-pointer group"
+      onClick={() => navigate(`/movies/${movie.id ?? movieId}`)}
+    >
+      <img
+        src={movie.poster_url || FALLBACK_SMALL}
+        alt={movie.title}
+        className="w-full aspect-[2/3] object-cover rounded-lg group-hover:opacity-80 transition-opacity"
+        onError={e => { e.target.src = FALLBACK_SMALL }}
+      />
+      <div className="mt-1.5 px-0.5">
+        <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{movie.title_clean || movie.title}</p>
+        <p className="text-xs text-gray-500">{movie.year}</p>
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          {genres.map(g => (
+            <span key={g} className="text-xs text-indigo-400">{g}</span>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
