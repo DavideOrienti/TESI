@@ -8,6 +8,7 @@ import MovieList from './pages/MovieList'
 import MovieDetail from './pages/MovieDetail'
 import Profile from './pages/Profile'
 import Navbar from './components/Navbar'
+import ChatBubble from './components/ChatBubble'
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -17,6 +18,7 @@ function ProtectedRoute() {
     <>
       <Navbar />
       <Outlet />
+      <ChatBubble />
     </>
   )
 }
