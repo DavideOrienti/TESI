@@ -79,14 +79,14 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
             ✨ Spiega perché
           </button>
         )}
-        {llmExplanation?.loading && (
+        {llmExplanation === 'loading' && (
           <p className="text-xs text-gray-500 italic animate-pulse mt-1">
             Generazione spiegazione personalizzata...
           </p>
         )}
-        {llmExplanation?.text && (
+        {llmExplanation && llmExplanation !== 'loading' && (
           <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.4', display: 'block' }}>
-            {llmExplanation.text}
+            {llmExplanation}
           </span>
         )}
       </div>

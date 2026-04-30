@@ -93,14 +93,22 @@ export default function Home() {
   useEffect(() => { loadAll() }, [loadAll])
 
   const fetchLLMExplanation = useCallback(async (movieId) => {
-    if (llmRequestedRef.current.has(movieId)) return
-    llmRequestedRef.current.add(movieId)
-    setLlmExplanations(prev => ({ ...prev, [movieId]: { text: null, loading: true } }))
+    console.log('[LLM] chiamata per movie:', movieId)
+
     try {
-      const res = await api.get(`/explain/${movieId}`)
-      setLlmExplanations(prev => ({ ...prev, [movieId]: { text: res.data.explanation ?? null, loading: false } }))
-    } catch {
-      setLlmExplanations(prev => ({ ...prev, [movieId]: { text: null, loading: false } }))
+      setLlmExplanations(prev => ({ ...prev, [movieId]: 'loading' }))
+      console.log('[LLM] stato loading impostato')
+
+      const response = await api.get(`/explain/${movieId}`)
+      console.log('[LLM] risposta ricevuta:', response.data)
+
+      const explanation = response.data.explanation
+      setLlmExplanations(prev => ({ ...prev, [movieId]: explanation || 'Spiegazione non disponibile' }))
+      console.log('[LLM] stato aggiornato con spiegazione')
+
+    } catch (err) {
+      console.error('[LLM] errore:', err.response?.status, err.message)
+      setLlmExplanations(prev => ({ ...prev, [movieId]: null }))
     }
   }, [])
 
