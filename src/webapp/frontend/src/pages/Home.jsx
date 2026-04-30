@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import MovieCard from '../components/MovieCard'
@@ -26,22 +26,27 @@ function HorizontalScroll({ title, subtitle, movies, userRatings, favorites, onR
   )
 }
 
-function GridSection({ title, movies, userRatings, favorites, onRate, onFavorite }) {
+function GridSection({ title, movies, userRatings, favorites, onRate, onFavorite, enableLLM = false, llmExplanations = {}, onExplain }) {
   return (
     <section className="mb-10">
       <h2 className="text-lg font-semibold text-white mb-4">{title}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {movies.map(m => (
-          <MovieCard
-            key={m.movie_id ?? m.id}
-            movie={{ ...m, id: m.movie_id ?? m.id }}
-            userRating={userRatings[m.movie_id ?? m.id]}
-            isFavorite={favorites.has(m.movie_id ?? m.id)}
-            onRate={onRate}
-            onFavorite={onFavorite}
-            explanation={m.explanation}
-          />
-        ))}
+        {movies.map(m => {
+          const id = m.movie_id ?? m.id
+          return (
+            <MovieCard
+              key={id}
+              movie={{ ...m, id }}
+              userRating={userRatings[id]}
+              isFavorite={favorites.has(id)}
+              onRate={onRate}
+              onFavorite={onFavorite}
+              explanation={m.explanation}
+              llmExplanation={enableLLM ? llmExplanations[id] : undefined}
+              onExplain={enableLLM ? onExplain : undefined}
+            />
+          )
+        })}
       </div>
     </section>
   )
@@ -56,6 +61,8 @@ export default function Home() {
   const [favorites, setFavorites] = useState(new Set())
   const [loading, setLoading] = useState(true)
   const [ratingCount, setRatingCount] = useState(0)
+  const [llmExplanations, setLlmExplanations] = useState({})
+  const llmRequestedRef = useRef(new Set())
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -84,6 +91,18 @@ export default function Home() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const fetchLLMExplanation = useCallback(async (movieId) => {
+    if (llmRequestedRef.current.has(movieId)) return
+    llmRequestedRef.current.add(movieId)
+    setLlmExplanations(prev => ({ ...prev, [movieId]: { text: null, loading: true } }))
+    try {
+      const res = await api.get(`/explain/${movieId}`)
+      setLlmExplanations(prev => ({ ...prev, [movieId]: { text: res.data.explanation ?? null, loading: false } }))
+    } catch {
+      setLlmExplanations(prev => ({ ...prev, [movieId]: { text: null, loading: false } }))
+    }
+  }, [])
 
   async function handleRate(movieId, rating) {
     await api.post(`/movies/${movieId}/rate`, { rating })
@@ -136,6 +155,9 @@ export default function Home() {
           favorites={favorites}
           onRate={handleRate}
           onFavorite={handleFavorite}
+          enableLLM={true}
+          llmExplanations={llmExplanations}
+          onExplain={fetchLLMExplanation}
         />
       )}
 

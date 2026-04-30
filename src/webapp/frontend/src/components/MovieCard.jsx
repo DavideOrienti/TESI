@@ -4,7 +4,7 @@ import ExplanationBadge from './ExplanationBadge'
 
 const FALLBACK = 'https://via.placeholder.com/300x450/1f2937/6b7280?text=No+Poster'
 
-export default function MovieCard({ movie, userRating, isFavorite, onRate, onFavorite, explanation, showRating = true }) {
+export default function MovieCard({ movie, userRating, isFavorite, onRate, onFavorite, explanation, showRating = true, llmExplanation = null, onExplain = null }) {
   const navigate = useNavigate()
   const genres = movie.genres ? movie.genres.split('|').slice(0, 2) : []
 
@@ -69,6 +69,26 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
         )}
 
         {explanation && <ExplanationBadge explanation={explanation} />}
+
+        {onExplain && !llmExplanation && (
+          <button
+            data-no-nav
+            onClick={e => { e.stopPropagation(); onExplain(movie.id ?? movie.movie_id) }}
+            style={{ fontSize: '0.7rem', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', marginTop: '4px' }}
+          >
+            ✨ Spiega perché
+          </button>
+        )}
+        {llmExplanation?.loading && (
+          <p className="text-xs text-gray-500 italic animate-pulse mt-1">
+            Generazione spiegazione personalizzata...
+          </p>
+        )}
+        {llmExplanation?.text && (
+          <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.4', display: 'block' }}>
+            {llmExplanation.text}
+          </span>
+        )}
       </div>
     </div>
   )
