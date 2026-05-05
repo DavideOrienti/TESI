@@ -130,7 +130,12 @@ def init(config) -> None:
 # Helpers interni
 # ---------------------------------------------------------------------------
 
-GAMMA = 0.7  # ottimizzato su validation NDCG@10
+# GAMMA = 0.7 selezionato tramite grid search su validation set
+# Grid: [0.2, 0.4, 0.5, 0.6, 0.7, 0.8]
+# Criterio: NDCG@10 su validation set (il test set NON è stato usato per la selezione)
+# Risultati: gamma=0.7 → NDCG@10_val=0.0316 (migliore)
+# Ref: Tabella 4.3 della tesi, script Fase_3/17_hybrid_svd_content_eval.py
+GAMMA = 0.7
 
 
 def _svd_scores_for_user(

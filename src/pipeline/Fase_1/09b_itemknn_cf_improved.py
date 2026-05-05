@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k, compute_rmse, compute_mae
 
 # =========================
 # CONFIG
@@ -279,6 +279,34 @@ def recommend_top_k_for_user(
     return final_recs[:k]
 
 
+def compute_rating_errors_knn(
+    train: pd.DataFrame,
+    eval_df: pd.DataFrame,
+    neighbors_dict: dict[int, list[tuple[int, float]]],
+) -> tuple[float, float, int]:
+    """RMSE e MAE sul set di valutazione usando score_user_item_improved."""
+    user_seen_map = get_user_seen_ratings(train)
+    user_means = build_user_means(train)
+    predictions = []
+    for _, row in eval_df.iterrows():
+        user_id = int(row["userId"])
+        movie_id = int(row["movieId"])
+        true_rating = float(row["rating"])
+        seen_ratings = user_seen_map.get(user_id, {})
+        user_mean = float(user_means.get(user_id, 0.0))
+        pred, used = score_user_item_improved(
+            user_id=user_id,
+            target_item=movie_id,
+            user_seen_ratings=seen_ratings,
+            user_mean=user_mean,
+            neighbors_dict=neighbors_dict,
+        )
+        if used >= MIN_POSITIVE_NEIGHBORS_FOR_SCORE:
+            pred = max(0.5, min(5.0, pred))
+            predictions.append((true_rating, pred))
+    return compute_rmse(predictions), compute_mae(predictions), len(predictions)
+
+
 def evaluate_split(
     train: pd.DataFrame,
     eval_df: pd.DataFrame,
@@ -403,6 +431,16 @@ def main():
         top_k_list=TOP_K_LIST
     )
 
+    val_rmse, val_mae, val_n = compute_rating_errors_knn(train, val, neighbors_dict)
+    test_rmse, test_mae, test_n = compute_rating_errors_knn(train, test, neighbors_dict)
+
+    val_summary["RMSE"] = round(val_rmse, 4)
+    val_summary["MAE"] = round(val_mae, 4)
+    val_summary["n_rating_predictions"] = val_n
+    test_summary["RMSE"] = round(test_rmse, 4)
+    test_summary["MAE"] = round(test_mae, 4)
+    test_summary["n_rating_predictions"] = test_n
+
     val_per_user_path = OUTPUT_DIR / "val_per_user_metrics.csv"
     test_per_user_path = OUTPUT_DIR / "test_per_user_metrics.csv"
     summary_path = OUTPUT_DIR / "summary_metrics.json"
@@ -443,6 +481,11 @@ def main():
             f"NDCG@{k}: {test_summary[f'NDCG@{k}']:.4f} | "
             f"MRR@{k}: {test_summary[f'MRR@{k}']:.4f}"
         )
+
+    print(f"\n=== RATING PREDICTION (VAL) ===")
+    print(f"RMSE: {val_rmse:.4f} | MAE: {val_mae:.4f} | N: {val_n}")
+    print(f"\n=== RATING PREDICTION (TEST) ===")
+    print(f"RMSE: {test_rmse:.4f} | MAE: {test_mae:.4f} | N: {test_n}")
 
     print(f"\nsaved val per-user metrics -> {val_per_user_path}")
     print(f"saved test per-user metrics -> {test_per_user_path}")

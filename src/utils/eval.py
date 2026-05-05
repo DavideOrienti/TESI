@@ -1,5 +1,6 @@
 from __future__ import annotations
 from math import log2
+import numpy as np
 
 
 def hit_rate_at_k(recommended: list[int], ground_truth: int, k: int) -> float:
@@ -47,3 +48,95 @@ def average_precision_at_k(recommended: list[int], ground_truth: int, k: int) ->
         return 0.0
     rank = rec_k.index(ground_truth) + 1
     return 1.0 / rank
+
+
+def compute_catalog_coverage(
+    recommendations: dict[int, list[int]],
+    catalog_size: int,
+    k: int = 10,
+) -> float:
+    """
+    Calcola la Catalog Coverage@K:
+    percentuale di item distinti nelle top-K di tutti gli utenti.
+
+    Un valore basso indica popularity bias (filter bubble).
+
+    Args:
+        recommendations: {user_id: [item_id, ...]} lista ordinata top-K
+        catalog_size: numero totale di item nel catalogo
+        k: cutoff
+
+    Returns:
+        coverage in [0, 1]
+    """
+    if not recommendations or catalog_size == 0:
+        return 0.0
+    recommended_items: set[int] = set()
+    for items in recommendations.values():
+        recommended_items.update(items[:k])
+    return len(recommended_items) / catalog_size
+
+
+def compute_novelty(
+    recommendations: dict[int, list[int]],
+    item_popularity: dict[int, int],
+    total_ratings: int,
+    k: int = 10,
+) -> float:
+    """
+    Calcola la Novelty@K media.
+
+    Formula: -log2(pop(i) / total_ratings)
+    Item popolare → bassa novelty; item raro → alta novelty.
+
+    Args:
+        recommendations: {user_id: [item_id, ...]}
+        item_popularity: {item_id: n_ratings}
+        total_ratings: numero totale di rating nel training
+        k: cutoff
+
+    Returns:
+        novelty media in [0, inf)
+    """
+    import math
+    if not recommendations or total_ratings == 0:
+        return 0.0
+    novelties = []
+    for items in recommendations.values():
+        for item_id in items[:k]:
+            pop = item_popularity.get(item_id, 1)
+            prob = pop / total_ratings
+            novelties.append(-math.log2(prob + 1e-10))
+    return float(sum(novelties) / len(novelties)) if novelties else 0.0
+
+
+def compute_rmse(predictions: list[tuple[float, float]]) -> float:
+    """
+    Calcola RMSE tra rating predetti e reali.
+
+    Args:
+        predictions: lista di tuple (rating_reale, rating_predetto)
+
+    Returns:
+        RMSE (float), nan se lista vuota
+    """
+    if not predictions:
+        return float("nan")
+    errors = [(true - pred) ** 2 for true, pred in predictions]
+    return float(np.sqrt(np.mean(errors)))
+
+
+def compute_mae(predictions: list[tuple[float, float]]) -> float:
+    """
+    Calcola MAE tra rating predetti e reali.
+
+    Args:
+        predictions: lista di tuple (rating_reale, rating_predetto)
+
+    Returns:
+        MAE (float), nan se lista vuota
+    """
+    if not predictions:
+        return float("nan")
+    errors = [abs(true - pred) for true, pred in predictions]
+    return float(np.mean(errors))

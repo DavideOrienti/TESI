@@ -23,15 +23,32 @@ def build_user_mean_ratings(train: pd.DataFrame) -> dict[int, float]:
 
 
 def minmax_normalize_scores(scores: dict[int, float]) -> dict[int, float]:
-    """Per-user min-max normalization of a score dict to [0, 1]."""
+    """
+    Normalizza gli score in [0, 1] con Min-Max scaling.
+
+    In caso di range degenere (tutti gli score uguali o dict vuoto),
+    restituisce score uniformi a 0.5 invece di 0 silenzioso, e logga un warning.
+
+    Args:
+        scores: dict {item_id: score}
+
+    Returns:
+        dict {item_id: score_normalizzato in [0,1]}
+    """
     if not scores:
         return {}
-    values = np.array(list(scores.values()), dtype=np.float32)
-    vmin = float(values.min())
-    vmax = float(values.max())
-    if vmax - vmin < 1e-12:
-        return {k: 0.0 for k in scores}
-    return {k: float((v - vmin) / (vmax - vmin)) for k, v in scores.items()}
+    min_s = min(scores.values())
+    max_s = max(scores.values())
+    range_s = max_s - min_s
+    if range_s < 1e-12:
+        import logging
+        logging.warning(
+            f"[minmax_normalize] degenerate range "
+            f"({range_s:.2e}) for {len(scores)} items. "
+            f"Returning uniform 0.5."
+        )
+        return {k: 0.5 for k in scores}
+    return {k: (v - min_s) / range_s for k, v in scores.items()}
 
 
 def score_candidate_cf(

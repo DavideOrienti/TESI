@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
 from src.utils.io import load_settings
-from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k, compute_rmse, compute_mae
 
 # =========================
 # CONFIG
@@ -13,7 +13,7 @@ from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, pre
 TOP_K_LIST = [5, 10, 20]
 
 N_FACTORS = 50
-RANDOM_STATE = 42
+RANDOM_STATE = 42  # seed globale — vedere src/config/random_state.py
 USE_USER_CENTERING = True
 POPULARITY_MIN_VOTES = 10
 
@@ -90,8 +90,6 @@ def fit_mf(user_item: pd.DataFrame, n_factors: int, random_state: int):
 
     svd = TruncatedSVD(n_components=n_factors, random_state=random_state)
     user_factors = svd.fit_transform(X)
-    item_factors = svd.components_.T  # items x factors
-
     reconstructed = user_factors @ svd.components_
 
     pred_df = pd.DataFrame(
@@ -145,6 +143,24 @@ def recommend_top_k_for_user(
                 break
 
     return recs[:k]
+
+
+def compute_rating_errors(
+    eval_df: pd.DataFrame,
+    pred_df: pd.DataFrame,
+    user_means: dict[int, float],
+) -> tuple[float, float, int]:
+    """RMSE e MAE sul set di valutazione per le coppie (user, item) presenti nella matrice SVD."""
+    predictions = []
+    for _, row in eval_df.iterrows():
+        user_id = int(row["userId"])
+        movie_id = int(row["movieId"])
+        true_rating = float(row["rating"])
+        if user_id in pred_df.index and movie_id in pred_df.columns:
+            pred = float(pred_df.loc[user_id, movie_id]) + float(user_means.get(user_id, 0.0))
+            pred = max(0.5, min(5.0, pred))
+            predictions.append((true_rating, pred))
+    return compute_rmse(predictions), compute_mae(predictions), len(predictions)
 
 
 def evaluate_split(
@@ -252,7 +268,7 @@ def main():
     n_factors = min(N_FACTORS, max_rank)
     print(f"n_factors used: {n_factors}")
 
-    svd, pred_df, explained = fit_mf(
+    _, pred_df, explained = fit_mf(
         user_item=user_item,
         n_factors=n_factors,
         random_state=RANDOM_STATE
@@ -281,6 +297,16 @@ def main():
         popularity_ranking=popularity_ranking,
         top_k_list=TOP_K_LIST
     )
+
+    val_rmse, val_mae, val_n = compute_rating_errors(val, pred_df, user_means)
+    test_rmse, test_mae, test_n = compute_rating_errors(test, pred_df, user_means)
+
+    val_summary["RMSE"] = round(val_rmse, 4)
+    val_summary["MAE"] = round(val_mae, 4)
+    val_summary["n_rating_predictions"] = val_n
+    test_summary["RMSE"] = round(test_rmse, 4)
+    test_summary["MAE"] = round(test_mae, 4)
+    test_summary["n_rating_predictions"] = test_n
 
     val_per_user_path = output_dir / "val_per_user_metrics.csv"
     test_per_user_path = output_dir / "test_per_user_metrics.csv"
@@ -323,6 +349,11 @@ def main():
             f"NDCG@{k}: {test_summary[f'NDCG@{k}']:.4f} | "
             f"MRR@{k}: {test_summary[f'MRR@{k}']:.4f}"
         )
+
+    print(f"\n=== RATING PREDICTION (VAL) ===")
+    print(f"RMSE: {val_rmse:.4f} | MAE: {val_mae:.4f} | N: {val_n}")
+    print(f"\n=== RATING PREDICTION (TEST) ===")
+    print(f"RMSE: {test_rmse:.4f} | MAE: {test_mae:.4f} | N: {test_n}")
 
     print(f"\nsaved val per-user metrics -> {val_per_user_path}")
     print(f"saved test per-user metrics -> {test_per_user_path}")

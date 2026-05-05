@@ -13,6 +13,10 @@ from src.recommenders.scoring import (
 )
 
 
+# Selezione GAMMA: grid search su validation set
+# Il test set NON è stato usato per la selezione
+# per evitare data leakage nella valutazione finale.
+# Il GAMMA ottimale viene poi applicato fisso in produzione (recommender_service.py).
 TOP_K_LIST = [5, 10, 20]
 GAMMAS = [0.2, 0.4, 0.5, 0.6, 0.7, 0.8]
 
