@@ -10,6 +10,7 @@ export default function Navbar() {
   const links = [
     { to: '/home', label: 'Home' },
     { to: '/movies', label: 'Catalogo' },
+    { to: '/social', label: 'Grafo' },
     { to: '/profile', label: 'Profilo' },
   ]
 

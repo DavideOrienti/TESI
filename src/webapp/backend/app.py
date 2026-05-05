@@ -10,6 +10,7 @@ from .search import search_bp
 from .visual_search import visual_bp
 from .explainer import explainer_bp
 from .chat import chat_bp
+from .social import social_bp
 import math
 import pandas as pd
 import os
@@ -44,6 +45,7 @@ def create_app():
     @app.route("/api/visual/version", methods=["OPTIONS"])
     @app.route("/api/chat/message", methods=["OPTIONS"])
     @app.route("/api/explain/<path:subpath>", methods=["OPTIONS"])
+    @app.route("/api/social/graph", methods=["OPTIONS"])
     def handle_options(subpath=None):
         origin = request.headers.get("Origin", "")
         res = make_response("", 204)
@@ -77,6 +79,7 @@ def create_app():
     app.register_blueprint(visual_bp, url_prefix="/api/visual")
     app.register_blueprint(explainer_bp, url_prefix="/api")
     app.register_blueprint(chat_bp, url_prefix="/api/chat")
+    app.register_blueprint(social_bp, url_prefix="/api/social")
 
     with app.app_context():
         db.create_all()
