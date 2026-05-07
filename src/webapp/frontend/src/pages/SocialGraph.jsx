@@ -1,49 +1,41 @@
+/* eslint-disable */
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import { useAuth } from '../context/AuthContext'
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+import api from '../api/client'
 
 export default function SocialGraph() {
-  const { token } = useAuth()
   const svgRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
   const [stats, setStats] = useState(null)
+  const [graphData, setGraphData] = useState(null)
 
   useEffect(() => {
-    let cancelled = false
+    api.get('/social/graph')
+      .then(res => {
+        setGraphData(res.data)
+        setStats(res.data.stats)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('Social graph error:', err)
+        setError('Errore nel caricamento del grafo')
+        setLoading(false)
+      })
+  }, [])
 
-    async function fetchAndDraw() {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`${API}/api/social/graph`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        if (cancelled) return
-
-        setStats({
-          nodes: data.nodes.length,
-          edges: data.edges.length,
-          avgDeg: data.nodes.length
-            ? (data.nodes.reduce((s, n) => s + n.degree, 0) / data.nodes.length).toFixed(1)
-            : 0,
-        })
-        drawGraph(data, setSelected)
-      } catch (e) {
-        if (!cancelled) setError(e.message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchAndDraw()
-    return () => { cancelled = true }
-  }, [token])
+  useEffect(() => {
+    if (!graphData) return
+    setStats({
+      nodes: graphData.nodes.length,
+      edges: graphData.edges.length,
+      avgDeg: graphData.nodes.length
+        ? (graphData.nodes.reduce((s, n) => s + n.degree, 0) / graphData.nodes.length).toFixed(1)
+        : 0,
+    })
+    drawGraph(graphData, setSelected)
+  }, [graphData])
 
   function drawGraph(data, onSelect) {
     const el = svgRef.current
