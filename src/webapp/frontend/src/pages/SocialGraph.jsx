@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export default function SocialGraph() {
+  const { token } = useAuth()
   const svgRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -16,8 +19,11 @@ export default function SocialGraph() {
       setLoading(true)
       setError(null)
       try {
-        const res = await api.get('/social/graph')
-        const data = res.data
+        const res = await fetch(`${API}/api/social/graph`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
         if (cancelled) return
 
         setStats({
