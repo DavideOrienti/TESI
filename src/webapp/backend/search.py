@@ -55,18 +55,33 @@ def _load_onnx_model():
         from transformers import AutoTokenizer
 
         onnx_path = BASE_DIR / "minilm_onnx" / "model.onnx"
-        tok_path = BASE_DIR / "minilm_onnx"
-        if not onnx_path.exists():
-            print("[search] ONNX model not found — using TF-IDF only")
+        tokenizer_path = BASE_DIR / "minilm_onnx"
+
+        print(f"[search] ONNX model path: {onnx_path}")
+        print(f"[search] ONNX model exists: {onnx_path.exists()}")
+        print(f"[search] BASE_DIR: {BASE_DIR}")
+        print(f"[search] BASE_DIR exists: {BASE_DIR.exists()}")
+
+        if tokenizer_path.exists():
+            files = list(tokenizer_path.iterdir())
+            print(f"[search] minilm_onnx files: {[f.name for f in files]}")
+        else:
+            print(f"[search] minilm_onnx dir NOT FOUND")
             return
 
-        _onnx_tokenizer = AutoTokenizer.from_pretrained(str(tok_path))
+        if not onnx_path.exists():
+            print("[search] model.onnx NOT FOUND")
+            return
+
+        _onnx_tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
         _onnx_session = ort.InferenceSession(str(onnx_path))
         _onnx_expected_inputs = {i.name for i in _onnx_session.get_inputs()}
         _onnx_ready = True
-        print(f"[search] ONNX MiniLM ready — inputs: {_onnx_expected_inputs}")
+        print("[search] ONNX MiniLM ready")
     except Exception as e:
         print(f"[search] ONNX load error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def _build_tfidf_index():
