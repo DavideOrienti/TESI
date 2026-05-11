@@ -13,3 +13,4 @@ Pillow==10.3.0
 imagehash==4.3.1
 groq==1.2.0
 onnxruntime==1.26.0
+tokenizers==0.19.1

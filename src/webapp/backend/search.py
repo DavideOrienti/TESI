@@ -52,7 +52,6 @@ def _load_onnx_model():
     global _onnx_session, _onnx_tokenizer, _onnx_ready, _onnx_expected_inputs
     try:
         import onnxruntime as ort
-        from transformers import AutoTokenizer
 
         onnx_path = BASE_DIR / "minilm_onnx" / "model.onnx"
         tokenizer_path = BASE_DIR / "minilm_onnx"
@@ -73,7 +72,11 @@ def _load_onnx_model():
             print("[search] model.onnx NOT FOUND")
             return
 
-        _onnx_tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
+        from tokenizers import Tokenizer
+        tokenizer_file = tokenizer_path / "tokenizer.json"
+        _onnx_tokenizer = Tokenizer.from_file(str(tokenizer_file))
+        _onnx_tokenizer.enable_padding()
+        _onnx_tokenizer.enable_truncation(max_length=128)
         _onnx_session = ort.InferenceSession(str(onnx_path))
         _onnx_expected_inputs = {i.name for i in _onnx_session.get_inputs()}
         _onnx_ready = True
@@ -122,22 +125,18 @@ def _build_tfidf_index():
 def _encode_with_onnx(query: str) -> np.ndarray | None:
     """Encoding con MiniLM ONNX — qualità semantica piena."""
     try:
-        inputs = _onnx_tokenizer(
-            query,
-            return_tensors="np",
-            padding=True,
-            truncation=True,
-            max_length=128,
-        )
-        # Cast int64 e filtra solo gli input attesi dal grafo ONNX
-        onnx_inputs = {
-            k: v.astype(np.int64)
-            for k, v in inputs.items()
-            if k in _onnx_expected_inputs
-        }
-        outputs = _onnx_session.run(None, onnx_inputs)
+        encoding = _onnx_tokenizer.encode(query)
+
+        input_ids = np.array([encoding.ids], dtype=np.int64)
+        attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
+
+        outputs = _onnx_session.run(None, {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+        })
+
         token_embeddings = outputs[0]
-        mask = inputs["attention_mask"][:, :, np.newaxis].astype(np.float32)
+        mask = attention_mask[:, :, np.newaxis].astype(np.float32)
         sum_emb = (token_embeddings * mask).sum(axis=1)
         sum_mask = mask.sum(axis=1).clip(min=1e-9)
         embedding = sum_emb / sum_mask
