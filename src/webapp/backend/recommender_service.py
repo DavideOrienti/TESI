@@ -11,12 +11,22 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-import numpy as np
 import pandas as pd
 
-from src.recommenders.scoring import (
-    minmax_normalize_scores,
-    score_candidate_content,
+from src.recommenders.content_based import (
+    build_content_neighbors_dict,
+    get_similar_movies as get_content_similar_movies,
+    score_content_candidates,
+)
+from src.recommenders.collaborative import get_svd_scores_for_user
+from src.recommenders.hybrid import (
+    merge_explicit_and_implicit_feedback,
+    rank_hybrid_scores,
+    user_mean_or_default,
+)
+from src.recommenders.popularity import (
+    ranking_from_movies_metadata,
+    recommend_popular,
 )
 
 # ---------------------------------------------------------------------------
@@ -30,26 +40,6 @@ _index_to_movieid: dict[int, int] = {}
 _candidate_items: list[int] = []
 _movie_titles: dict[int, str] = {}  # movie_id -> title_clean
 _popularity_ranking: list[int] = []  # movie_ids ordinati per popolarità
-
-
-def _build_content_neighbors_dict(
-    neighbors_df: pd.DataFrame,
-    index_to_movieid: dict[int, int],
-) -> dict[int, list[tuple[int, float]]]:
-    neigh: dict[int, list[tuple[int, float]]] = {}
-    for movie_idx, g in neighbors_df.groupby("movie_idx"):
-        candidate_movie_id = index_to_movieid.get(int(movie_idx))
-        if candidate_movie_id is None:
-            continue
-        rows = []
-        for _, row in g.iterrows():
-            neighbor_movie_id = index_to_movieid.get(int(row["neighbor_idx"]))
-            if neighbor_movie_id is None:
-                continue
-            rows.append((neighbor_movie_id, float(row["similarity"])))
-        rows.sort(key=lambda x: (-x[1], x[0]))
-        neigh[candidate_movie_id] = rows
-    return neigh
 
 
 def init(config) -> None:
@@ -93,7 +83,7 @@ def init(config) -> None:
 
     # Content neighbors
     neighbors_df = pd.read_csv(_cfg("CONTENT_NEIGHBORS"))
-    _content_neighbors_dict = _build_content_neighbors_dict(neighbors_df, _index_to_movieid)
+    _content_neighbors_dict = build_content_neighbors_dict(neighbors_df, _index_to_movieid)
 
     # Candidate items: film presenti sia in training che nell'indice content
     train_df = pd.read_csv(_cfg("RATINGS_TRAIN"))
@@ -109,13 +99,7 @@ def init(config) -> None:
     }
 
     # Ranking popolarità (fallback utenti nuovi)
-    if "popularity" in movies_df.columns:
-        pop_sorted = movies_df[movies_df["movieId"].isin(_candidate_items)].sort_values(
-            "popularity", ascending=False, na_position="last"
-        )
-        _popularity_ranking = [int(mid) for mid in pop_sorted["movieId"].tolist()]
-    else:
-        _popularity_ranking = list(_candidate_items)
+    _popularity_ranking = ranking_from_movies_metadata(movies_df, _candidate_items)
 
     _initialized = True
     print(
@@ -136,22 +120,6 @@ def init(config) -> None:
 # Risultati: gamma=0.7 → NDCG@10_val=0.0316 (migliore)
 # Ref: Tabella 4.3 della tesi, script Fase_3/17_hybrid_svd_content_eval.py
 GAMMA = 0.7
-
-
-def _svd_scores_for_user(
-    user_id: int,
-    unseen_candidates: list[int],
-    user_mean_rating: float,
-) -> dict[int, float]:
-    if _svd_matrix is None or user_id not in _svd_matrix.index:
-        # utente nuovo: fallback al valor medio globale (o 0)
-        return {mid: user_mean_rating for mid in unseen_candidates}
-    user_row = _svd_matrix.loc[user_id]
-    svd_cols = set(user_row.index)
-    return {
-        mid: float(user_row[mid]) if mid in svd_cols else user_mean_rating
-        for mid in unseen_candidates
-    }
 
 
 def _content_explanation(
@@ -189,50 +157,33 @@ def get_recommendations(
     I preferiti senza rating esplicito vengono trattati come rating implicito 4.5;
     i preferiti con rating vengono rinforzati del 10% (max 5.0).
     """
-    # Costruisce merged_ratings combinando rating espliciti e segnale implicito dei preferiti
-    merged_ratings: dict[int, float] = dict(user_ratings)
-    for movie_id in favorite_movie_ids:
-        if movie_id not in merged_ratings:
-            merged_ratings[movie_id] = 4.5
-        else:
-            merged_ratings[movie_id] = min(5.0, merged_ratings[movie_id] * 1.1)
-
+    merged_ratings = merge_explicit_and_implicit_feedback(user_ratings, favorite_movie_ids)
     seen_items = set(seen_movie_ids)
-    user_mean = float(np.mean(list(merged_ratings.values()))) if merged_ratings else 3.5
+    user_mean = user_mean_or_default(merged_ratings)
     unseen = [m for m in _candidate_items if m not in seen_items]
 
-    svd_raw = _svd_scores_for_user(user_id, unseen, user_mean)
-    content_raw = {
-        mid: score_candidate_content(
-            candidate_movie_id=mid,
-            seen_ratings=merged_ratings,
-            user_mean_rating=user_mean,
-            content_neighbors_dict=_content_neighbors_dict,
-        )
-        for mid in unseen
-    }
-
-    svd_norm = minmax_normalize_scores(svd_raw)
-    content_norm = minmax_normalize_scores(content_raw)
+    svd_raw = get_svd_scores_for_user(user_id, unseen, _svd_matrix, user_mean)
+    content_raw = score_content_candidates(
+        candidate_items=unseen,
+        seen_ratings=merged_ratings,
+        user_mean_rating=user_mean,
+        content_neighbors_dict=_content_neighbors_dict,
+        exclude_seen=False,
+    )
 
     is_new_user = _svd_matrix is None or user_id not in _svd_matrix.index
 
-    scored = []
-    for mid in unseen:
-        s_svd = svd_norm.get(mid, 0.0)
-        s_content = content_norm.get(mid, 0.0)
-        if is_new_user:
-            final = s_content
-        else:
-            final = GAMMA * s_svd + (1.0 - GAMMA) * s_content
-        scored.append((mid, final, s_svd, s_content))
-
-    scored.sort(key=lambda x: (-x[1], x[0]))
-    top = scored[:top_k]
+    top = rank_hybrid_scores(
+        collaborative_scores=svd_raw,
+        content_scores=content_raw,
+        collaborative_weight=GAMMA,
+        top_k=top_k,
+        content_only=is_new_user,
+    )
 
     # Fallback: se tutti i punteggi sono 0 (utente senza rating) → popolarità
-    if not top or all(s == 0.0 for _, s, _, _ in top):
-        fallback = [mid for mid in _popularity_ranking if mid not in seen_items][:top_k]
+    if not top or all(item.score == 0.0 for item in top):
+        fallback = recommend_popular(_popularity_ranking, seen_items, top_k)
         return [
             {
                 "movie_id": mid,
@@ -243,15 +194,16 @@ def get_recommendations(
         ]
 
     results = []
-    for mid, final, s_svd, s_content in top:
+    for item in top:
+        mid = item.movie_id
         seeds = _content_explanation(mid, merged_ratings)
         results.append({
             "movie_id": int(mid),
-            "score": round(float(final), 6),
+            "score": round(float(item.score), 6),
             "explanation": {
                 "type": "hybrid" if not is_new_user else "content",
-                "svd_score": round(float(s_svd), 6),
-                "content_score": round(float(s_content), 6),
+                "svd_score": round(float(item.collaborative_score), 6),
+                "content_score": round(float(item.content_score), 6),
                 "seed_movies": seeds,
             },
         })
@@ -261,17 +213,12 @@ def get_recommendations(
 
 def get_similar_movies(movie_id: int, top_k: int = 10) -> list[dict]:
     """Film più simili per embedding content-based."""
-    neighbors = _content_neighbors_dict.get(movie_id, [])
-    return [
-        {"movie_id": nid, "similarity": round(float(sim), 4)}
-        for nid, sim in neighbors[:top_k]
-    ]
+    return get_content_similar_movies(movie_id, _content_neighbors_dict, top_k)
 
 
 def get_popular_movies(top_k: int = 20, exclude: set[int] | None = None) -> list[int]:
     """Restituisce i movie_id più popolari, escludendo quelli in exclude."""
-    excl = exclude or set()
-    return [mid for mid in _popularity_ranking if mid not in excl][:top_k]
+    return recommend_popular(_popularity_ranking, exclude, top_k)
 
 
 def get_social_recommendations(

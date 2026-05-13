@@ -5,12 +5,16 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.recommenders.collaborative import build_cf_neighbors_dict, score_cf_candidates
+from src.recommenders.content_based import (
+    build_content_neighbors_dict,
+    build_index_to_movieid,
+    score_content_candidates,
+)
+from src.recommenders.hybrid import rank_hybrid_scores
 from src.recommenders.scoring import (
     build_user_seen_ratings,
     build_user_mean_ratings,
-    minmax_normalize_scores,
-    score_candidate_cf,
-    score_candidate_content,
 )
 
 
@@ -43,53 +47,6 @@ def load_data(base):
     return train, val, test, cf_neighbors_df, content_index_df, content_neighbors_df
 
 
-def build_cf_neighbors_dict(cf_neighbors_df: pd.DataFrame) -> dict[int, list[tuple[int, float]]]:
-    neigh = {}
-    for movie_id, g in cf_neighbors_df.groupby("movieId"):
-        rows = [
-            (int(row["neighbor_movieId"]), float(row["similarity"]))
-            for _, row in g.iterrows()
-        ]
-        rows.sort(key=lambda x: (-x[1], x[0]))
-        neigh[int(movie_id)] = rows
-    return neigh
-
-
-def build_index_to_movieid(index_df: pd.DataFrame) -> dict[int, int]:
-    return {
-        int(idx): int(movie_id)
-        for idx, movie_id in enumerate(index_df["movieId"].tolist())
-    }
-
-
-def build_content_neighbors_dict(
-    content_neighbors_df: pd.DataFrame,
-    index_to_movieid: dict[int, int]
-) -> dict[int, list[tuple[int, float]]]:
-    """
-    candidate_movieId -> [(neighbor_movieId, sim), ...]
-    """
-    neigh = {}
-    for movie_idx, g in content_neighbors_df.groupby("movie_idx"):
-        candidate_movie_id = index_to_movieid.get(int(movie_idx))
-        if candidate_movie_id is None:
-            continue
-
-        rows = []
-        for _, row in g.iterrows():
-            neighbor_idx = int(row["neighbor_idx"])
-            neighbor_movie_id = index_to_movieid.get(neighbor_idx)
-            if neighbor_movie_id is None:
-                continue
-
-            rows.append((neighbor_movie_id, float(row["similarity"])))
-
-        rows.sort(key=lambda x: (-x[1], x[0]))
-        neigh[candidate_movie_id] = rows
-
-    return neigh
-
-
 def build_user_model_scores(
     user_id: int,
     candidate_items: list[int],
@@ -99,29 +56,20 @@ def build_user_model_scores(
     content_neighbors_dict: dict[int, list[tuple[int, float]]]
 ) -> tuple[dict[int, float], dict[int, float]]:
     seen_ratings = user_seen_map.get(user_id, {})
-    seen_items = set(seen_ratings.keys())
     user_mean_rating = user_mean_map.get(user_id, 0.0)
 
-    cf_scores = {}
-    content_scores = {}
-
-    for movie_id in candidate_items:
-        if movie_id in seen_items:
-            continue
-
-        cf_scores[movie_id] = score_candidate_cf(
-            candidate_movie_id=movie_id,
-            seen_ratings=seen_ratings,
-            user_mean_rating=user_mean_rating,
-            cf_neighbors_dict=cf_neighbors_dict
-        )
-
-        content_scores[movie_id] = score_candidate_content(
-            candidate_movie_id=movie_id,
-            seen_ratings=seen_ratings,
-            user_mean_rating=user_mean_rating,
-            content_neighbors_dict=content_neighbors_dict
-        )
+    cf_scores = score_cf_candidates(
+        candidate_items=candidate_items,
+        seen_ratings=seen_ratings,
+        user_mean_rating=user_mean_rating,
+        cf_neighbors_dict=cf_neighbors_dict,
+    )
+    content_scores = score_content_candidates(
+        candidate_items=candidate_items,
+        seen_ratings=seen_ratings,
+        user_mean_rating=user_mean_rating,
+        content_neighbors_dict=content_neighbors_dict,
+    )
 
     return cf_scores, content_scores
 
@@ -132,20 +80,15 @@ def recommend_top_k_hybrid(
     alpha: float,
     k: int
 ) -> list[int]:
-    cf_norm = minmax_normalize_scores(cf_scores)
-    content_norm = minmax_normalize_scores(content_scores)
-
-    all_items = set(cf_norm.keys()).union(content_norm.keys())
-
-    final_scores = []
-    for movie_id in all_items:
-        scf = cf_norm.get(movie_id, 0.0)
-        scontent = content_norm.get(movie_id, 0.0)
-        sfinal = alpha * scf + (1.0 - alpha) * scontent
-        final_scores.append((movie_id, sfinal))
-
-    final_scores.sort(key=lambda x: (-x[1], x[0]))
-    return [movie_id for movie_id, _ in final_scores[:k]]
+    return [
+        item.movie_id
+        for item in rank_hybrid_scores(
+            collaborative_scores=cf_scores,
+            content_scores=content_scores,
+            collaborative_weight=alpha,
+            top_k=k,
+        )
+    ]
 
 
 def evaluate_split_for_alpha(

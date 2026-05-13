@@ -29,6 +29,27 @@ Gli script sperimentali dovranno importare questi moduli invece di duplicare la 
 
 Impatto tesi: rende chiara la distinzione tra modelli confrontati.
 
+Stato: completata per il primo nucleo.
+
+Creati:
+
+- `src/recommenders/popularity.py`;
+- `src/recommenders/collaborative.py`;
+- `src/recommenders/content_based.py`;
+- `src/recommenders/hybrid.py`.
+
+Il backend usa gia questi moduli per recommendation serving, fallback popularity, SVD score, scoring content e ranking hybrid.
+
+Script offline riallineati:
+
+- `src/pipeline/Fase_1/08_popularity_baseline.py`;
+- `src/pipeline/Fase_1/09b_itemknn_cf_improved.py`;
+- `src/pipeline/Fase_1/10_matrix_factorization.py`.
+- `src/pipeline/Fase_2a/14a_evaluate_content_baseline_v2.py`.
+- `src/pipeline/Fase_3/15_hybrid_weighted_eval.py`;
+- `src/pipeline/Fase_3/17_hybrid_svd_content_eval.py`;
+- `src/pipeline/Fase_4/18c_evaluate_content_ablation.py`.
+
 ## Fase 3 - Evaluation Framework
 
 Creare `src/evaluation` con:
@@ -40,6 +61,15 @@ Creare `src/evaluation` con:
 - coverage e ablation study.
 
 Impatto tesi: rafforza la validita sperimentale.
+
+Stato: parzialmente completata.
+
+Creati:
+
+- `src/evaluation/metrics.py`;
+- `src/utils/eval.py` come shim compatibile.
+
+Implementate metriche top-N, coverage, novelty, RMSE e MAE. Da completare: runner comparativo unico, manifest esperimenti e salvataggio standardizzato dei risultati.
 
 ## Fase 4 - Data Pipeline E TMDB
 
@@ -81,5 +111,28 @@ Impatto tesi: prepara sviluppi futuri senza appesantire il core del sistema.
 
 ## Primo Refactoring Tecnico Consigliato
 
-Estrarre da `src/webapp/backend/recommender_service.py` la logica hybrid riusabile in `src/recommenders/hybrid.py`, mantenendo il backend come chiamante. Questo riduce duplicazione e collega direttamente sperimentazione offline e web app.
+Completato: la logica hybrid e stata estratta in `src/recommenders/hybrid.py`, insieme ai moduli core per popularity, collaborative, content-based ed evaluation.
 
+## Prossimo Refactoring Tecnico Consigliato
+
+Aggiornare progressivamente gli script sperimentali rimasti in `Fase_3` e `Fase_4`, con priorita a:
+
+- `Fase_3/16_hybrid_with_popularity_eval.py`, per consolidare il confronto con popularity;
+- `Fase_4/24_coverage_novelty_eval.py`, per centralizzare metriche beyond-accuracy;
+- `Fase_4/25_coldstart_analysis.py`, per rendere piu chiara l'analisi cold-start.
+
+## Test Introdotti
+
+La prima suite di regressione copre:
+
+- popularity baseline e fallback;
+- collaborative filtering helper;
+- content-based neighbors e ranking;
+- hybrid ranking;
+- metriche di evaluation.
+
+Comando:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests.test_popularity tests.test_collaborative tests.test_content_based tests.test_metrics tests.test_hybrid
+```

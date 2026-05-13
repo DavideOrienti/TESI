@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
+from src.recommenders.collaborative import build_cf_neighbors_dict, recommend_itemknn_top_k
+from src.recommenders.popularity import build_popularity_ranking
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k, compute_rmse, compute_mae
 
 # =========================
@@ -50,35 +52,6 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     val = pd.read_csv(VAL_FILE)
     test = pd.read_csv(TEST_FILE)
     return train, val, test
-
-
-def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFrame:
-    item_stats = (
-        train.groupby("movieId")
-        .agg(
-            rating_count=("rating", "count"),
-            rating_mean=("rating", "mean")
-        )
-        .reset_index()
-    )
-
-    c_global = train["rating"].mean()
-
-    item_stats["pop_score"] = (
-        (item_stats["rating_count"] / (item_stats["rating_count"] + min_votes)) * item_stats["rating_mean"]
-        + (min_votes / (item_stats["rating_count"] + min_votes)) * c_global
-    )
-
-    item_stats = item_stats.sort_values(
-        ["pop_score", "rating_count", "movieId"],
-        ascending=[False, False, True]
-    ).reset_index(drop=True)
-
-    return item_stats
-
-
-def get_seen_items(train: pd.DataFrame) -> dict[int, set[int]]:
-    return train.groupby("userId")["movieId"].apply(lambda x: set(map(int, x))).to_dict()
 
 
 def build_user_means(train: pd.DataFrame) -> dict[int, float]:
@@ -162,16 +135,6 @@ def extract_top_neighbors(sim_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_neighbors_dict(top_neighbors_df: pd.DataFrame) -> dict[int, list[tuple[int, float]]]:
-    neigh = {}
-    for movie_id, g in top_neighbors_df.groupby("movieId"):
-        neigh[int(movie_id)] = [
-            (int(row["neighbor_movieId"]), float(row["similarity"]))
-            for _, row in g.iterrows()
-        ]
-    return neigh
-
-
 def get_user_seen_ratings(train: pd.DataFrame) -> dict[int, dict[int, float]]:
     mapping = {}
     for user_id, g in train.groupby("userId"):
@@ -180,20 +143,6 @@ def get_user_seen_ratings(train: pd.DataFrame) -> dict[int, dict[int, float]]:
             for mid, r in zip(g["movieId"], g["rating"])
         }
     return mapping
-
-
-def popularity_recommendations_for_user(
-    popularity_ranking: list[int],
-    seen_items: set[int],
-    k: int
-) -> list[int]:
-    recs = []
-    for movie_id in popularity_ranking:
-        if movie_id not in seen_items:
-            recs.append(movie_id)
-        if len(recs) >= k:
-            break
-    return recs
 
 
 def score_user_item_improved(
@@ -234,49 +183,17 @@ def recommend_top_k_for_user(
     k: int
 ) -> list[int]:
     seen_ratings = user_seen_map.get(user_id, {})
-    seen_items = set(seen_ratings.keys())
     user_mean = float(user_means.get(user_id, 0.0))
 
-    scored = []
-
-    for item_id in candidate_items:
-        if item_id in seen_items:
-            continue
-
-        score, used_neighbors = score_user_item_improved(
-            user_id=user_id,
-            target_item=item_id,
-            user_seen_ratings=seen_ratings,
-            user_mean=user_mean,
-            neighbors_dict=neighbors_dict
-        )
-
-        if used_neighbors > 0:
-            scored.append((item_id, score, used_neighbors))
-
-    # ranking personalizzato
-    scored.sort(key=lambda x: (-x[1], -x[2], x[0]))
-    personalized = [item_id for item_id, _, _ in scored]
-
-    # fallback popularity per completare la top-k
-    final_recs = []
-    used = set()
-
-    for item_id in personalized:
-        if item_id not in used:
-            final_recs.append(item_id)
-            used.add(item_id)
-        if len(final_recs) >= k:
-            return final_recs
-
-    pop_fallback = popularity_recommendations_for_user(
+    return recommend_itemknn_top_k(
+        candidate_items=candidate_items,
+        seen_ratings=seen_ratings,
+        user_mean_rating=user_mean,
+        cf_neighbors_dict=neighbors_dict,
         popularity_ranking=popularity_ranking,
-        seen_items=seen_items.union(used),
-        k=k - len(final_recs)
+        k=k,
+        min_neighbors_for_personalized=MIN_POSITIVE_NEIGHBORS_FOR_SCORE,
     )
-
-    final_recs.extend(pop_fallback)
-    return final_recs[:k]
 
 
 def compute_rating_errors_knn(
@@ -400,7 +317,7 @@ def main():
 
     sim_df = build_item_similarity_improved(user_item_centered, valid_items)
     top_neighbors_df = extract_top_neighbors(sim_df)
-    neighbors_dict = build_neighbors_dict(top_neighbors_df)
+    neighbors_dict = build_cf_neighbors_dict(top_neighbors_df)
 
     sim_path = OUTPUT_DIR / "item_similarity_top_neighbors.csv"
     top_neighbors_df.to_csv(sim_path, index=False)

@@ -5,10 +5,14 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.recommenders.content_based import (
+    build_content_neighbors_dict,
+    build_index_to_movieid,
+    recommend_content_top_k,
+)
 from src.recommenders.scoring import (
     build_user_seen_ratings,
     build_user_mean_ratings,
-    score_candidate_content,
 )
 
 
@@ -35,50 +39,6 @@ def load_data(base):
     return train, val, test, index_df, neighbors_df
 
 
-def build_movieid_to_index(index_df: pd.DataFrame) -> dict[int, int]:
-    return {
-        int(movie_id): int(idx)
-        for idx, movie_id in enumerate(index_df["movieId"].tolist())
-    }
-
-
-def build_index_to_movieid(index_df: pd.DataFrame) -> dict[int, int]:
-    return {
-        int(idx): int(movie_id)
-        for idx, movie_id in enumerate(index_df["movieId"].tolist())
-    }
-
-
-def build_neighbors_dict(neighbors_df: pd.DataFrame, index_to_movieid: dict[int, int]) -> dict[int, list[tuple[int, float]]]:
-    """
-    Converte il file top-neighbors basato su indici in:
-    candidate_movieId -> [(neighbor_movieId, similarity), ...]
-    """
-    mapping: dict[int, list[tuple[int, float]]] = {}
-
-    for movie_idx, g in neighbors_df.groupby("movie_idx"):
-        candidate_movie_id = index_to_movieid.get(int(movie_idx))
-        if candidate_movie_id is None:
-            continue
-
-        neighs = []
-        for _, row in g.iterrows():
-            neighbor_idx = int(row["neighbor_idx"])
-            neighbor_movie_id = index_to_movieid.get(neighbor_idx)
-            if neighbor_movie_id is None:
-                continue
-
-            sim = float(row["similarity"])
-            neighs.append((neighbor_movie_id, sim))
-
-        neighs.sort(key=lambda x: (-x[1], x[0]))
-        mapping[candidate_movie_id] = neighs
-
-    return mapping
-
-
-
-
 def recommend_top_k_for_user(
     user_id: int,
     candidate_items: list[int],
@@ -88,35 +48,15 @@ def recommend_top_k_for_user(
     k: int
 ) -> tuple[list[int], int]:
     seen_ratings = user_seen_map.get(user_id, {})
-    seen_items = set(seen_ratings.keys())
     user_mean_rating = user_mean_map.get(user_id, 0.0)
 
-    scored = []
-    with_neighbor_support = 0
-
-    for movie_id in candidate_items:
-        if movie_id in seen_items:
-            continue
-
-        _neighbors = neighbors_dict.get(movie_id, [])
-        used_neighbors = sum(
-            1 for nm, sim in _neighbors if nm in seen_ratings and sim > 0
-        )
-        score = score_candidate_content(
-            candidate_movie_id=movie_id,
-            seen_ratings=seen_ratings,
-            user_mean_rating=user_mean_rating,
-            content_neighbors_dict=neighbors_dict
-        )
-
-        if used_neighbors > 0:
-            with_neighbor_support += 1
-
-        scored.append((movie_id, score, used_neighbors))
-
-    scored.sort(key=lambda x: (-x[1], -x[2], x[0]))
-    top_items = [movie_id for movie_id, _, _ in scored[:k]]
-    return top_items, with_neighbor_support
+    return recommend_content_top_k(
+        candidate_items=candidate_items,
+        seen_ratings=seen_ratings,
+        user_mean_rating=user_mean_rating,
+        content_neighbors_dict=neighbors_dict,
+        k=k,
+    )
 
 
 def evaluate_split(
@@ -214,9 +154,8 @@ def main():
     print("index:", index_df.shape)
     print("neighbors:", neighbors_df.shape)
 
-    movieid_to_index = build_movieid_to_index(index_df)
     index_to_movieid = build_index_to_movieid(index_df)
-    neighbors_dict = build_neighbors_dict(neighbors_df, index_to_movieid)
+    neighbors_dict = build_content_neighbors_dict(neighbors_df, index_to_movieid)
 
     candidate_items = sorted(
         set(train["movieId"].unique()).intersection(set(index_df["movieId"].unique()))

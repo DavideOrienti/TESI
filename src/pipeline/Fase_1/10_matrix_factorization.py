@@ -6,6 +6,8 @@ from sklearn.decomposition import TruncatedSVD
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k, compute_rmse, compute_mae
+from src.recommenders.collaborative import recommend_svd_top_k
+from src.recommenders.popularity import build_popularity_ranking
 
 # =========================
 # CONFIG
@@ -36,31 +38,6 @@ def load_data(train_file, val_file, test_file) -> tuple[pd.DataFrame, pd.DataFra
     val = pd.read_csv(val_file)
     test = pd.read_csv(test_file)
     return train, val, test
-
-
-def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFrame:
-    item_stats = (
-        train.groupby("movieId")
-        .agg(
-            rating_count=("rating", "count"),
-            rating_mean=("rating", "mean")
-        )
-        .reset_index()
-    )
-
-    c_global = train["rating"].mean()
-
-    item_stats["pop_score"] = (
-        (item_stats["rating_count"] / (item_stats["rating_count"] + min_votes)) * item_stats["rating_mean"]
-        + (min_votes / (item_stats["rating_count"] + min_votes)) * c_global
-    )
-
-    item_stats = item_stats.sort_values(
-        ["pop_score", "rating_count", "movieId"],
-        ascending=[False, False, True]
-    ).reset_index(drop=True)
-
-    return item_stats
 
 
 def build_user_item_matrix(train: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, float]]:
@@ -114,35 +91,15 @@ def recommend_top_k_for_user(
     popularity_ranking: list[int],
     k: int
 ) -> list[int]:
-    if user_id not in pred_df.index:
-        # fallback totale
-        recs = []
-        for movie_id in popularity_ranking:
-            if movie_id not in seen_items:
-                recs.append(movie_id)
-            if len(recs) >= k:
-                return recs
-        return recs
-
-    user_scores = pred_df.loc[user_id].copy()
-
-    if USE_USER_CENTERING:
-        user_scores = user_scores + user_mean
-
-    user_scores = user_scores.drop(labels=list(seen_items), errors="ignore")
-    user_scores = user_scores.sort_values(ascending=False)
-
-    recs = list(map(int, user_scores.head(k).index.tolist()))
-
-    if len(recs) < k:
-        used = set(recs).union(seen_items)
-        for movie_id in popularity_ranking:
-            if movie_id not in used:
-                recs.append(movie_id)
-            if len(recs) >= k:
-                break
-
-    return recs[:k]
+    return recommend_svd_top_k(
+        user_id=user_id,
+        svd_matrix=pred_df,
+        seen_items=seen_items,
+        fallback_score=user_mean,
+        popularity_ranking=popularity_ranking,
+        k=k,
+        score_offset=user_mean if USE_USER_CENTERING else 0.0,
+    )
 
 
 def compute_rating_errors(

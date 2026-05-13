@@ -7,10 +7,14 @@ import argparse
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.recommenders.content_based import (
+    build_content_neighbors_dict,
+    build_index_to_movieid,
+    score_content_candidates,
+)
 from src.recommenders.scoring import (
     build_user_seen_ratings,
     build_user_mean_ratings,
-    score_candidate_content,
 )
 
 parser = argparse.ArgumentParser()
@@ -36,44 +40,19 @@ def load_data(base):
     return train, val, test, index_df, neighbors_df
 
 
-def build_index_to_movieid(index_df):
-    return {int(i): int(mid) for i, mid in enumerate(index_df["movieId"].tolist())}
-
-
-def build_neighbors_dict(neighbors_df, index_to_movieid):
-    mapping = {}
-    for movie_idx, g in neighbors_df.groupby("movie_idx"):
-        cand = index_to_movieid.get(int(movie_idx))
-        if cand is None:
-            continue
-        rows = []
-        for _, row in g.iterrows():
-            neigh_idx = int(row["neighbor_idx"])
-            neigh_mid = index_to_movieid.get(neigh_idx)
-            if neigh_mid is None:
-                continue
-            rows.append((neigh_mid, float(row["similarity"])))
-        rows.sort(key=lambda x: (-x[1], x[0]))
-        mapping[cand] = rows
-    return mapping
-
-
-
-
 def recommend_top_k(user_id, candidate_items, user_seen_map, user_mean_map, neighbors_dict, k):
     seen_ratings = user_seen_map.get(user_id, {})
-    seen_items = set(seen_ratings.keys())
     user_mean = user_mean_map.get(user_id, 0.0)
 
-    scored = []
-    for movie_id in candidate_items:
-        if movie_id in seen_items:
-            continue
-        score = score_candidate_content(movie_id, seen_ratings, user_mean, neighbors_dict)
-        scored.append((movie_id, score))
+    scores = score_content_candidates(
+        candidate_items=candidate_items,
+        seen_ratings=seen_ratings,
+        user_mean_rating=user_mean,
+        content_neighbors_dict=neighbors_dict,
+    )
 
-    scored.sort(key=lambda x: (-x[1], x[0]))
-    return [movie_id for movie_id, _ in scored[:k]]
+    ranked = sorted(scores.items(), key=lambda x: (-x[1], x[0]))
+    return [movie_id for movie_id, _ in ranked[:k]]
 
 
 def evaluate_split(train, eval_df, candidate_items, neighbors_dict):
@@ -111,7 +90,7 @@ def main():
 
     train, val, test, index_df, neighbors_df = load_data(base)
     index_to_movieid = build_index_to_movieid(index_df)
-    neighbors_dict = build_neighbors_dict(neighbors_df, index_to_movieid)
+    neighbors_dict = build_content_neighbors_dict(neighbors_df, index_to_movieid)
 
     candidate_items = sorted(set(train["movieId"].unique()).intersection(set(index_df["movieId"].unique())))
 

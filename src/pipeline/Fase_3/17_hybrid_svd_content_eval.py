@@ -5,11 +5,16 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.recommenders.collaborative import get_svd_scores_for_user
+from src.recommenders.content_based import (
+    build_content_neighbors_dict,
+    build_index_to_movieid,
+    score_content_candidates,
+)
+from src.recommenders.hybrid import rank_hybrid_scores
 from src.recommenders.scoring import (
     build_user_seen_ratings,
     build_user_mean_ratings,
-    minmax_normalize_scores,
-    score_candidate_content,
 )
 
 
@@ -43,54 +48,6 @@ def load_data(base):
     content_neighbors_df = pd.read_csv(base / CONTENT_NEIGHBORS_NAME)
 
     return train, val, test, svd_matrix, content_index_df, content_neighbors_df
-
-
-def build_index_to_movieid(index_df: pd.DataFrame) -> dict[int, int]:
-    return {
-        int(idx): int(movie_id)
-        for idx, movie_id in enumerate(index_df["movieId"].tolist())
-    }
-
-
-def build_content_neighbors_dict(
-    content_neighbors_df: pd.DataFrame,
-    index_to_movieid: dict[int, int],
-) -> dict[int, list[tuple[int, float]]]:
-    neigh = {}
-    for movie_idx, g in content_neighbors_df.groupby("movie_idx"):
-        candidate_movie_id = index_to_movieid.get(int(movie_idx))
-        if candidate_movie_id is None:
-            continue
-
-        rows = []
-        for _, row in g.iterrows():
-            neighbor_idx = int(row["neighbor_idx"])
-            neighbor_movie_id = index_to_movieid.get(neighbor_idx)
-            if neighbor_movie_id is None:
-                continue
-            rows.append((neighbor_movie_id, float(row["similarity"])))
-
-        rows.sort(key=lambda x: (-x[1], x[0]))
-        neigh[candidate_movie_id] = rows
-
-    return neigh
-
-
-def get_svd_scores_for_user(
-    user_id: int,
-    candidate_items: list[int],
-    svd_matrix: pd.DataFrame,
-    user_mean_rating: float,
-) -> dict[int, float]:
-    if user_id not in svd_matrix.index:
-        return {movie_id: user_mean_rating for movie_id in candidate_items}
-
-    user_row = svd_matrix.loc[user_id]
-    svd_cols = set(user_row.index)
-    return {
-        movie_id: float(user_row[movie_id]) if movie_id in svd_cols else user_mean_rating
-        for movie_id in candidate_items
-    }
 
 
 def evaluate_split_for_gamma(
@@ -128,28 +85,26 @@ def evaluate_split_for_gamma(
             user_id=user_id,
             candidate_items=unseen_candidates,
             svd_matrix=svd_matrix,
-            user_mean_rating=user_mean_rating,
+            fallback_score=user_mean_rating,
         )
 
-        content_scores = {
-            movie_id: score_candidate_content(
-                candidate_movie_id=movie_id,
-                seen_ratings=seen_ratings,
-                user_mean_rating=user_mean_rating,
-                content_neighbors_dict=content_neighbors_dict,
+        content_scores = score_content_candidates(
+            candidate_items=unseen_candidates,
+            seen_ratings=seen_ratings,
+            user_mean_rating=user_mean_rating,
+            content_neighbors_dict=content_neighbors_dict,
+            exclude_seen=False,
+        )
+
+        recs = [
+            item.movie_id
+            for item in rank_hybrid_scores(
+                collaborative_scores=svd_scores,
+                content_scores=content_scores,
+                collaborative_weight=gamma,
+                top_k=max_k,
             )
-            for movie_id in unseen_candidates
-        }
-
-        svd_norm = minmax_normalize_scores(svd_scores)
-        content_norm = minmax_normalize_scores(content_scores)
-
-        final_scores = [
-            (movie_id, gamma * svd_norm.get(movie_id, 0.0) + (1.0 - gamma) * content_norm.get(movie_id, 0.0))
-            for movie_id in unseen_candidates
         ]
-        final_scores.sort(key=lambda x: (-x[1], x[0]))
-        recs = [movie_id for movie_id, _ in final_scores[:max_k]]
 
         result_row = {
             "userId": user_id,

@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k
+from src.recommenders.popularity import build_popularity_ranking, recommend_popular
 
 
 # =========================
@@ -20,31 +21,6 @@ def load_data(train_file, val_file, test_file) -> tuple[pd.DataFrame, pd.DataFra
     return train, val, test
 
 
-def build_popularity_ranking(train: pd.DataFrame, min_votes: int) -> pd.DataFrame:
-    item_stats = (
-        train.groupby("movieId")
-        .agg(
-            rating_count=("rating", "count"),
-            rating_mean=("rating", "mean")
-        )
-        .reset_index()
-    )
-
-    c_global = train["rating"].mean()
-
-    item_stats["pop_score"] = (
-        (item_stats["rating_count"] / (item_stats["rating_count"] + min_votes)) * item_stats["rating_mean"]
-        + (min_votes / (item_stats["rating_count"] + min_votes)) * c_global
-    )
-
-    item_stats = item_stats.sort_values(
-        ["pop_score", "rating_count", "movieId"],
-        ascending=[False, False, True]
-    ).reset_index(drop=True)
-
-    return item_stats
-
-
 def get_seen_items(train: pd.DataFrame) -> dict[int, set[int]]:
     return train.groupby("userId")["movieId"].apply(set).to_dict()
 
@@ -54,13 +30,7 @@ def recommend_top_k_for_user(
     seen_items: set[int],
     k: int
 ) -> list[int]:
-    recs = []
-    for movie_id in ranking_movie_ids:
-        if movie_id not in seen_items:
-            recs.append(movie_id)
-        if len(recs) >= k:
-            break
-    return recs
+    return recommend_popular(ranking_movie_ids, seen_items, k)
 
 
 def evaluate_split(
