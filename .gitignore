@@ -1,16 +1,25 @@
 # =============================
-# DATASET (MovieLens)
+# DATASET AND GENERATED DATA
 # =============================
 data/raw/**
 data/processed/**
+data/interim/**
+data/external/**
+data/posters/**
+cache/tmdb/**
 
-# Fallback CSV non necessario in produzione (parquet è sufficiente)
+# Deploy artifacts are intentionally kept when needed by the web app.
+# Oversized or intermediate fallbacks should stay local.
 data/deploy_artifacts/predicted_scores_matrix.csv
+data/deploy_artifacts/clip_checkpoint.npy
+data/deploy_artifacts/clip_checkpoint_idx.json
 
 # =============================
-# DATABASE LOCALE
+# LOCAL DATABASE
 # =============================
 src/webapp/backend/database.db
+*.sqlite
+*.sqlite3
 
 # =============================
 # ENVIRONMENT
@@ -27,9 +36,15 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # =============================
 # NODE
 # =============================
 node_modules/
 src/webapp/frontend/dist/
+src/webapp/frontend/.vite/
+src/webapp/frontend/.vite-temp/
+

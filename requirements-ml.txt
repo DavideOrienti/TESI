@@ -1,0 +1,13 @@
+-r requirements.txt
+
+# Offline experiments and NLP embeddings
+sentence-transformers==2.7.0
+scipy==1.11.4
+jupyter==1.0.0
+notebook==7.1.3
+
+# Optional multimodal experiments.
+# CLIP may require a separate install depending on the environment:
+# pip install git+https://github.com/openai/CLIP.git
+# torch should be installed following the official command for CPU/CUDA.
+
