@@ -16,12 +16,19 @@ export default function Navbar() {
 
   const isActive = (path) => location.pathname === path
 
+  const initials = user?.username
+    ? user.username.slice(0, 2).toUpperCase()
+    : '??'
+
   return (
-    <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
+    <nav className="glass fixed top-0 left-0 right-0 z-50 border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14">
+        <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/home" className="text-indigo-400 font-bold text-xl tracking-tight">
+          <Link
+            to="/home"
+            className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent"
+          >
             CineRec
           </Link>
 
@@ -31,8 +38,10 @@ export default function Navbar() {
               <Link
                 key={l.to}
                 to={l.to}
-                className={`text-sm font-medium transition-colors ${
-                  isActive(l.to) ? 'text-white' : 'text-gray-400 hover:text-white'
+                className={`text-sm font-medium transition-colors duration-200 ${
+                  isActive(l.to)
+                    ? 'text-indigo-400'
+                    : 'text-slate-300 hover:text-indigo-400'
                 }`}
               >
                 {l.label}
@@ -42,10 +51,21 @@ export default function Navbar() {
 
           {/* User + logout */}
           <div className="hidden md:flex items-center gap-3">
-            <span className="text-gray-400 text-sm">{user?.username}</span>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300"
+                style={{
+                  background: 'rgba(99,102,241,0.2)',
+                  border: '1px solid rgba(99,102,241,0.3)',
+                }}
+              >
+                {initials}
+              </div>
+              <span className="text-slate-300 text-sm">{user?.username}</span>
+            </div>
             <button
               onClick={logout}
-              className="text-sm text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1 transition-colors"
+              className="text-sm text-rose-400 hover:text-rose-300 transition-colors duration-200 ml-1"
             >
               Esci
             </button>
@@ -53,7 +73,7 @@ export default function Navbar() {
 
           {/* Mobile hamburger */}
           <button
-            className="md:hidden text-gray-400 hover:text-white"
+            className="md:hidden text-slate-400 hover:text-white"
             onClick={() => setMenuOpen(o => !o)}
           >
             <span className="text-2xl">{menuOpen ? '✕' : '☰'}</span>
@@ -63,20 +83,38 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="md:hidden bg-gray-900 border-t border-gray-800 px-4 py-3 flex flex-col gap-3">
+        <div className="md:hidden glass border-t border-white/10 px-4 py-3 flex flex-col gap-3">
           {links.map(l => (
             <Link
               key={l.to}
               to={l.to}
               onClick={() => setMenuOpen(false)}
-              className={`text-sm font-medium ${isActive(l.to) ? 'text-white' : 'text-gray-400'}`}
+              className={`text-sm font-medium transition-colors duration-200 ${
+                isActive(l.to) ? 'text-indigo-400' : 'text-slate-300'
+              }`}
             >
               {l.label}
             </Link>
           ))}
-          <div className="border-t border-gray-800 pt-3 flex items-center justify-between">
-            <span className="text-gray-400 text-sm">{user?.username}</span>
-            <button onClick={logout} className="text-sm text-red-400">Esci</button>
+          <div className="border-t border-white/10 pt-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300"
+                style={{
+                  background: 'rgba(99,102,241,0.2)',
+                  border: '1px solid rgba(99,102,241,0.3)',
+                }}
+              >
+                {initials}
+              </div>
+              <span className="text-slate-300 text-sm">{user?.username}</span>
+            </div>
+            <button
+              onClick={logout}
+              className="text-sm text-rose-400 hover:text-rose-300 transition-colors duration-200"
+            >
+              Esci
+            </button>
           </div>
         </div>
       )}

@@ -1,9 +1,31 @@
 @import "tailwindcss";
 
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-hover: rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --accent: #818cf8;
+  --accent-glow: rgba(129, 140, 248, 0.3);
+  --surface-1: #0f0f1a;
+  --surface-2: #13131f;
+  --surface-3: #1a1a2e;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+}
+
 body {
-  background-color: #111827;
-  color: #f9fafb;
+  background: #0f0f1a;
+  background-image:
+    radial-gradient(ellipse at 15% 15%,
+      rgba(129, 140, 248, 0.15) 0%, transparent 45%),
+    radial-gradient(ellipse at 85% 85%,
+      rgba(139, 92, 246, 0.12) 0%, transparent 45%);
+  background-attachment: fixed;
+  color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
   margin: 0;
 }
 
@@ -15,14 +37,37 @@ body {
   box-sizing: border-box;
 }
 
-::-webkit-scrollbar {
-  height: 6px;
-  width: 6px;
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
 }
-::-webkit-scrollbar-track {
-  background: #1f2937;
+
+.glass-strong {
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
+
+.glass-hover:hover {
+  background: var(--glass-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+  transition: all 0.2s ease;
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.glow-accent-sm {
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.2);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: rgba(129, 140, 248, 0.3);
   border-radius: 3px;
 }

@@ -17,11 +17,13 @@ function MovieChip({ movie }) {
       <img
         src={movie.poster_url || FALLBACK_POSTER}
         alt={movie.title}
-        style={{ width: 60, height: 90, objectFit: 'cover', borderRadius: 6 }}
+        style={{ width: 60, height: 90, objectFit: 'cover', borderRadius: 8 }}
         onError={e => { e.target.src = FALLBACK_POSTER }}
       />
-      <p style={{ fontSize: '0.6rem', color: '#d1d5db', marginTop: 3, lineHeight: 1.2, textAlign: 'center' }}
-        className="line-clamp-2">
+      <p
+        className="line-clamp-2"
+        style={{ fontSize: '0.6rem', color: '#cbd5e1', marginTop: 3, lineHeight: 1.2, textAlign: 'center' }}
+      >
         {movie.title}
       </p>
     </div>
@@ -31,15 +33,17 @@ function MovieChip({ movie }) {
 function Message({ msg }) {
   const isUser = msg.role === 'user'
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
       <div
+        className={isUser ? 'ml-8' : 'mr-8'}
         style={{
-          maxWidth: '80%',
+          maxWidth: '85%',
           padding: '8px 12px',
           borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-          background: isUser ? '#4f46e5' : '#374151',
-          color: isUser ? '#fff' : '#f3f4f6',
-          fontSize: '0.85rem',
+          background: isUser ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.06)',
+          border: isUser ? '1px solid rgba(99,102,241,0.3)' : '1px solid rgba(255,255,255,0.10)',
+          color: isUser ? '#e2e8f0' : '#cbd5e1',
+          fontSize: '0.78rem',
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
@@ -88,7 +92,6 @@ export default function ChatBubble() {
     setInput('')
     setLoading(true)
 
-    // Costruisci history per il backend (solo role+content, senza movies)
     const history = nextMessages
       .slice(-11, -1)
       .map(m => ({ role: m.role, content: m.content }))
@@ -121,43 +124,60 @@ export default function ChatBubble() {
 
   return (
     <>
-      {/* Chat window */}
       {open && (
         <div
           style={{
             position: 'fixed',
             bottom: 88,
             right: 24,
-            width: 380,
+            width: 360,
             height: 500,
-            background: '#1f2937',
-            borderRadius: 16,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            borderRadius: 24,
+            overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1000,
-            overflow: 'hidden',
+            background: 'rgba(15,15,26,0.95)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.6)',
             animation: 'slideUp 0.2s ease-out',
           }}
         >
           {/* Header */}
-          <div style={{ background: '#111827', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #374151' }}>
-            <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.95rem' }}>🎬 CineBot</span>
+          <div style={{
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))',
+            borderBottom: '1px solid rgba(255,255,255,0.10)',
+          }}>
+            <span style={{ color: '#a5b4fc', fontWeight: 600, fontSize: '0.875rem' }}>🎬 CineBot</span>
             <button
               onClick={() => setOpen(false)}
-              style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '2px 6px' }}
+              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '2px 6px' }}
+              className="hover:text-slate-200 transition-colors"
             >
               ×
             </button>
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column' }}>
             {messages.map((msg, i) => <Message key={i} msg={msg} />)}
             {loading && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div style={{ background: '#374151', borderRadius: '16px 16px 16px 4px', padding: '8px 14px' }}>
-                  <span style={{ color: '#9ca3af', fontSize: '0.85rem' }} className="animate-pulse">CineBot sta scrivendo…</span>
+              <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  borderRadius: '16px 16px 16px 4px',
+                  padding: '8px 14px',
+                }}>
+                  <span style={{ color: '#64748b', fontSize: '0.78rem' }} className="animate-pulse">
+                    CineBot sta scrivendo…
+                  </span>
                 </div>
               </div>
             )}
@@ -165,7 +185,13 @@ export default function ChatBubble() {
           </div>
 
           {/* Input */}
-          <div style={{ padding: '12px', borderTop: '1px solid #374151', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{
+            padding: '12px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'flex-end',
+          }}>
             <textarea
               ref={textareaRef}
               value={input}
@@ -175,12 +201,12 @@ export default function ChatBubble() {
               rows={1}
               style={{
                 flex: 1,
-                background: '#374151',
-                color: '#f9fafb',
-                border: 'none',
-                borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)',
+                color: '#e2e8f0',
+                border: '1px solid rgba(255,255,255,0.10)',
+                borderRadius: 12,
                 padding: '8px 12px',
-                fontSize: '0.85rem',
+                fontSize: '0.78rem',
                 resize: 'none',
                 outline: 'none',
                 maxHeight: 80,
@@ -193,15 +219,17 @@ export default function ChatBubble() {
               onClick={sendMessage}
               disabled={loading || !input.trim()}
               style={{
-                background: loading || !input.trim() ? '#374151' : '#4f46e5',
-                color: loading || !input.trim() ? '#6b7280' : '#fff',
+                background: loading || !input.trim()
+                  ? 'rgba(255,255,255,0.06)'
+                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                color: loading || !input.trim() ? '#475569' : '#fff',
                 border: 'none',
-                borderRadius: 10,
+                borderRadius: 12,
                 padding: '8px 14px',
                 cursor: loading || !input.trim() ? 'default' : 'pointer',
-                fontSize: '0.85rem',
+                fontSize: '0.78rem',
                 fontWeight: 600,
-                transition: 'background 0.15s',
+                transition: 'all 0.15s',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -214,26 +242,19 @@ export default function ChatBubble() {
       {/* Floating button */}
       <button
         onClick={() => setOpen(prev => !prev)}
+        className="w-14 h-14 rounded-full flex items-center justify-center text-xl text-white transition-all duration-200 hover:scale-105"
         style={{
           position: 'fixed',
           bottom: 24,
           right: 24,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: '#4f46e5',
+          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          boxShadow: '0 4px 20px rgba(99,102,241,0.4)',
           border: 'none',
           cursor: 'pointer',
-          fontSize: '1.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(79,70,229,0.5)',
           zIndex: 1001,
-          transition: 'transform 0.15s, box-shadow 0.15s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(79,70,229,0.7)' }}
-        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(79,70,229,0.5)' }}
+        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 28px rgba(99,102,241,0.6)' }}
+        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(99,102,241,0.4)' }}
         title="Apri CineBot"
       >
         {open ? '✕' : '🎬'}

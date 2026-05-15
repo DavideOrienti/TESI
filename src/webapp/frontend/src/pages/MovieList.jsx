@@ -9,11 +9,35 @@ const GENRES = [
   'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western',
 ]
 
+const glassInput = {
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.10)',
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+      style={active ? {
+        background: 'rgba(129,140,248,0.15)',
+        border: '1px solid rgba(129,140,248,0.3)',
+        color: '#a5b4fc',
+      } : {
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        color: '#94a3b8',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function MovieList() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('title') // 'title' | 'semantic' | 'visual'
+  const [tab, setTab] = useState('title')
 
-  // --- title search state ---
   const [movies, setMovies] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -21,14 +45,12 @@ export default function MovieList() {
   const [searchInput, setSearchInput] = useState('')
   const [genre, setGenre] = useState('')
 
-  // --- semantic search state ---
   const [semanticInput, setSemanticInput] = useState('')
   const [semanticResults, setSemanticResults] = useState([])
   const [semanticQuery, setSemanticQuery] = useState('')
   const [semanticLoading, setSemanticLoading] = useState(false)
   const [semanticError, setSemanticError] = useState('')
 
-  // --- visual search state ---
   const [visualFile, setVisualFile] = useState(null)
   const [visualPreview, setVisualPreview] = useState(null)
   const [visualRecognized, setVisualRecognized] = useState(null)
@@ -38,7 +60,6 @@ export default function MovieList() {
   const [visualError, setVisualError] = useState('')
   const [visualNotFound, setVisualNotFound] = useState(false)
 
-  // --- shared ---
   const [userRatings, setUserRatings] = useState({})
   const [favorites, setFavorites] = useState(new Set())
   const [loading, setLoading] = useState(true)
@@ -136,7 +157,6 @@ export default function MovieList() {
       const recognized = res.data.recognized_movie ?? null
       setVisualRecognized(recognized)
       setVisualSimilar(res.data.similar_movies ?? [])
-      // Fetch film simili per trama dal riconosciuto
       if (recognized?.movie_id) {
         api.get(`/movies/${recognized.movie_id}`)
           .then(r => setVisualContentSimilar(r.data.similar_movies?.slice(0, 6) ?? []))
@@ -172,40 +192,20 @@ export default function MovieList() {
   const totalPages = Math.ceil(total / LIMIT)
 
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-white mb-6">Catalogo Film</h1>
+    <main className="pt-6 pb-12 px-4 max-w-7xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-100 mb-4">Catalogo Film</h1>
 
-      {/* Tab switcher */}
-      <div className="flex gap-1 bg-gray-800 rounded-lg p-1 mb-6 w-fit">
-        <button
-          onClick={() => setTab('title')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            tab === 'title' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          🔍 Titolo
-        </button>
-        <button
-          onClick={() => setTab('semantic')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            tab === 'semantic' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          ✨ Concetto
-        </button>
-        <button
-          onClick={() => setTab('visual')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            tab === 'visual' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          🖼️ Foto locandina
-        </button>
+        {/* Tab switcher */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          <TabButton active={tab === 'title'} onClick={() => setTab('title')}>🔍 Titolo</TabButton>
+          <TabButton active={tab === 'semantic'} onClick={() => setTab('semantic')}>✨ Concetto</TabButton>
+          <TabButton active={tab === 'visual'} onClick={() => setTab('visual')}>🖼️ Foto locandina</TabButton>
+        </div>
       </div>
 
-      {tab === 'title' ? (
+      {tab === 'title' && (
         <>
-          {/* Ricerca per titolo + filtro genere */}
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <form onSubmit={handleSearch} className="flex gap-2 flex-1">
               <input
@@ -213,11 +213,13 @@ export default function MovieList() {
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 placeholder="Cerca per titolo..."
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                className="flex-1 rounded-xl px-4 py-2.5 text-slate-100 text-sm placeholder:text-slate-600 outline-none"
+                style={glassInput}
               />
               <button
                 type="submit"
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition-colors"
+                className="text-white px-4 py-2 rounded-xl text-sm transition-all"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
               >
                 Cerca
               </button>
@@ -225,7 +227,8 @@ export default function MovieList() {
             <select
               value={genre}
               onChange={e => handleGenre(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-300 focus:outline-none focus:border-indigo-500"
+              className="rounded-xl px-3 py-2.5 text-sm text-slate-300 outline-none"
+              style={glassInput}
             >
               <option value="">Tutti i generi</option>
               {GENRES.filter(Boolean).map(g => (
@@ -235,11 +238,11 @@ export default function MovieList() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-16 text-gray-400 text-2xl animate-spin">⟳</div>
+            <div className="flex justify-center py-16 text-slate-400 text-2xl animate-spin">⟳</div>
           ) : (
             <>
-              <p className="text-gray-400 text-sm mb-4">{total} film trovati</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
+              <p className="text-slate-500 text-sm mb-4">{total} film trovati</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 mb-8">
                 {movies.map(m => (
                   <MovieCard
                     key={m.id}
@@ -256,15 +259,17 @@ export default function MovieList() {
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 rounded-xl text-sm text-slate-300 disabled:opacity-40 transition-all"
+                    style={glassInput}
                   >
                     ← Precedente
                   </button>
-                  <span className="text-gray-400 text-sm">Pagina {page} di {totalPages}</span>
+                  <span className="text-slate-400 text-sm">Pagina {page} di {totalPages}</span>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 rounded-xl text-sm text-slate-300 disabled:opacity-40 transition-all"
+                    style={glassInput}
                   >
                     Successiva →
                   </button>
@@ -273,36 +278,37 @@ export default function MovieList() {
             </>
           )}
         </>
-      ) : (
+      )}
+
+      {tab === 'semantic' && (
         <>
-          {/* Ricerca semantica */}
           <form onSubmit={handleSemanticSearch} className="flex gap-2 mb-2">
             <input
               type="text"
               value={semanticInput}
               onChange={e => setSemanticInput(e.target.value)}
               placeholder="es. film con maghi anni 70, thriller psicologico, storia d'amore a Parigi..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="flex-1 rounded-xl px-4 py-2.5 text-slate-100 text-sm placeholder:text-slate-600 outline-none"
+              style={glassInput}
             />
             <button
               type="submit"
               disabled={semanticLoading || semanticInput.trim().length < 3}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+              className="text-white px-4 py-2 rounded-xl text-sm disabled:opacity-40 transition-all whitespace-nowrap"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
             >
               {semanticLoading ? '⟳' : '✨ Cerca'}
             </button>
           </form>
-          <p className="text-xs text-gray-500 mb-6">
+          <p className="text-xs text-slate-500 mb-6">
             Cerca per trama, ambientazione, periodo storico, mood o qualsiasi concetto — non solo titolo
           </p>
 
-          {semanticError && (
-            <p className="text-red-400 text-sm mb-4">{semanticError}</p>
-          )}
+          {semanticError && <p className="text-red-400 text-sm mb-4">{semanticError}</p>}
 
           {semanticResults.length > 0 && (
             <>
-              <p className="text-gray-400 text-sm mb-4">
+              <p className="text-slate-500 text-sm mb-4">
                 {semanticResults.length} risultati per "{semanticQuery}"
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -316,7 +322,14 @@ export default function MovieList() {
                       onFavorite={handleFavorite}
                     />
                     <div className="mt-1 px-1">
-                      <span className="text-xs bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded-full">
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full"
+                        style={{
+                          background: 'rgba(99,102,241,0.15)',
+                          color: '#a5b4fc',
+                          border: '1px solid rgba(99,102,241,0.25)',
+                        }}
+                      >
                         Pertinenza: {Math.round(m.similarity_score * 100)}%
                       </span>
                     </div>
@@ -327,22 +340,24 @@ export default function MovieList() {
           )}
 
           {!semanticLoading && semanticQuery && semanticResults.length === 0 && !semanticError && (
-            <p className="text-gray-400 text-center py-12">Nessun risultato trovato per "{semanticQuery}"</p>
+            <p className="text-slate-500 text-center py-12">Nessun risultato trovato per "{semanticQuery}"</p>
           )}
         </>
       )}
 
       {tab === 'visual' && (
         <>
-          {/* Upload */}
           <div className="mb-6">
             <label className="flex items-center gap-3 cursor-pointer w-fit">
-              <span className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              <span
+                className="text-white px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+              >
                 📁 Carica foto locandina
               </span>
               <input type="file" accept="image/*" className="hidden" onChange={handleVisualFileChange} />
             </label>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-slate-500 mt-2">
               Carica una foto di una locandina per trovare il film o film con poster simili
             </p>
           </div>
@@ -352,14 +367,16 @@ export default function MovieList() {
               <img
                 src={visualPreview}
                 alt="preview"
-                className="w-24 h-36 object-cover rounded-lg border border-gray-600"
+                className="w-24 h-36 object-cover rounded-xl"
+                style={{ border: '1px solid rgba(255,255,255,0.15)' }}
               />
               <div className="flex flex-col gap-2">
-                <p className="text-gray-400 text-sm">{visualFile?.name}</p>
+                <p className="text-slate-400 text-sm">{visualFile?.name}</p>
                 <button
                   onClick={handleVisualSearch}
                   disabled={visualLoading}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm transition-colors w-fit"
+                  className="text-white px-4 py-2 rounded-xl text-sm disabled:opacity-40 transition-all w-fit"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
                 >
                   {visualLoading ? '⟳ Analisi in corso...' : '🖼️ Riconosci film'}
                 </button>
@@ -375,10 +392,9 @@ export default function MovieList() {
             </p>
           )}
 
-          {/* Sezione 1 — Film riconosciuto */}
           {visualRecognized && (
             <div className="mb-8">
-              <h2 className="text-lg font-semibold text-white mb-4">Film riconosciuto</h2>
+              <h2 className="text-base font-semibold text-slate-200 mb-4">Film riconosciuto</h2>
               <VisualRecognizedCard
                 movie={visualRecognized}
                 navigate={navigate}
@@ -390,11 +406,10 @@ export default function MovieList() {
             </div>
           )}
 
-          {/* Sezione 2 — Film con poster simili (riga scrollabile, max 5) */}
           {visualSimilar.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-lg font-semibold text-white mb-4">Film con poster simili</h2>
-              <div className="flex gap-4 overflow-x-auto pb-2">
+              <h2 className="text-base font-semibold text-slate-200 mb-4">Film con poster simili</h2>
+              <div className="flex gap-3 overflow-x-auto pb-2">
                 {visualSimilar.slice(0, 5).map(m => (
                   <div key={m.movie_id} className="flex-shrink-0 w-36 flex flex-col">
                     <MovieCard
@@ -405,8 +420,15 @@ export default function MovieList() {
                       onFavorite={handleFavorite}
                     />
                     <div className="mt-1 px-1">
-                      <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-full">
-                        Somiglianza visiva: {Math.round(m.visual_similarity * 100)}%
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full"
+                        style={{
+                          background: 'rgba(139,92,246,0.15)',
+                          color: '#c4b5fd',
+                          border: '1px solid rgba(139,92,246,0.25)',
+                        }}
+                      >
+                        Visiva: {Math.round(m.visual_similarity * 100)}%
                       </span>
                     </div>
                   </div>
@@ -415,27 +437,22 @@ export default function MovieList() {
             </div>
           )}
 
-          {/* Sezione 3 — Ti potrebbe piacere anche (simili per trama) */}
           {visualContentSimilar.length > 0 && visualRecognized && (
             <div className="mb-8">
-              <h2 className="text-lg font-semibold text-white mb-4">
+              <h2 className="text-base font-semibold text-slate-200 mb-4">
                 Ti potrebbe piacere anche —{' '}
-                <span className="text-gray-400 font-normal">basato sulla trama di {visualRecognized.title}</span>
+                <span className="text-slate-400 font-normal">basato sulla trama di {visualRecognized.title}</span>
               </h2>
-              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-4">
+              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-3">
                 {visualContentSimilar.map(s => (
-                  <ContentSimilarCard
-                    key={s.movie_id}
-                    movieId={s.movie_id}
-                    navigate={navigate}
-                  />
+                  <ContentSimilarCard key={s.movie_id} movieId={s.movie_id} navigate={navigate} />
                 ))}
               </div>
             </div>
           )}
 
           {!visualLoading && !visualPreview && (
-            <p className="text-gray-500 text-center py-12">
+            <p className="text-slate-500 text-center py-12">
               Carica una locandina per iniziare la ricerca visiva
             </p>
           )}
@@ -457,51 +474,59 @@ function VisualRecognizedCard({ movie, navigate }) {
   const methodLabel = movie.method === 'clip' ? 'CLIP' : 'phash'
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-col sm:flex-row gap-6 border border-gray-700">
+    <div
+      className="rounded-2xl p-4 flex flex-col sm:flex-row gap-6"
+      style={{
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
       <img
         src={movie.poster_url || FALLBACK_POSTER}
         alt={movie.title}
-        className="w-32 rounded-lg flex-shrink-0 self-start"
+        className="w-32 rounded-xl flex-shrink-0 self-start"
         onError={e => { e.target.src = FALLBACK_POSTER }}
       />
       <div className="flex flex-col gap-2 flex-1">
         <div className="flex flex-wrap gap-2 items-center">
-          <h3 className="text-xl font-bold text-white">{movie.title}</h3>
-          {movie.year && <span className="text-gray-400">{movie.year}</span>}
+          <h3 className="text-xl font-bold text-slate-100">{movie.title}</h3>
+          {movie.year && <span className="text-slate-400">{movie.year}</span>}
         </div>
-
         <div className="flex flex-wrap gap-1.5">
           {genres.map(g => (
-            <span key={g} className="bg-indigo-900/50 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full text-xs">
+            <span
+              key={g}
+              className="px-2 py-0.5 rounded-full text-xs"
+              style={{
+                background: 'rgba(129,140,248,0.12)',
+                border: '1px solid rgba(129,140,248,0.25)',
+                color: '#a5b4fc',
+              }}
+            >
               {g}
             </span>
           ))}
         </div>
-
         <div className="flex gap-2 flex-wrap">
-          <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded-full">
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.15)', color: '#86efac', border: '1px solid rgba(34,197,94,0.25)' }}>
             Riconosciuto con {confidence}% di confidenza
           </span>
-          <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.10)' }}>
             {methodLabel}
           </span>
         </div>
-
         {movie.director && (
-          <p className="text-gray-400 text-sm">
-            <span className="text-gray-500">Regia </span>{movie.director}
-          </p>
+          <p className="text-slate-400 text-sm"><span className="text-slate-500">Regia </span>{movie.director}</p>
         )}
         {actors.length > 0 && (
-          <p className="text-gray-400 text-sm">
-            <span className="text-gray-500">Con </span>{actors.slice(0, 3).join(', ')}
-          </p>
+          <p className="text-slate-400 text-sm"><span className="text-slate-500">Con </span>{actors.slice(0, 3).join(', ')}</p>
         )}
-        {overview && <p className="text-gray-500 text-sm leading-relaxed">{overview}</p>}
-
+        {overview && <p className="text-slate-500 text-sm leading-relaxed">{overview}</p>}
         <button
           onClick={() => navigate(`/movies/${movie.movie_id}`)}
-          className="mt-2 w-fit bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+          className="mt-2 w-fit text-white px-4 py-2 rounded-xl text-sm transition-all"
+          style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
         >
           Vai alla scheda film →
         </button>
@@ -519,28 +544,23 @@ function ContentSimilarCard({ movieId, navigate }) {
     api.get(`/movies/${movieId}`).then(r => setMovie(r.data.movie)).catch(() => {})
   }, [movieId])
 
-  if (!movie) return <div className="aspect-[2/3] bg-gray-700 animate-pulse rounded-lg" />
+  if (!movie) return <div className="aspect-[2/3] animate-pulse rounded-xl" style={{ background: 'rgba(255,255,255,0.06)' }} />
 
   const genres = movie.genres ? movie.genres.split('|').slice(0, 2) : []
 
   return (
-    <div
-      className="cursor-pointer group"
-      onClick={() => navigate(`/movies/${movie.id ?? movieId}`)}
-    >
+    <div className="cursor-pointer group" onClick={() => navigate(`/movies/${movie.id ?? movieId}`)}>
       <img
         src={movie.poster_url || FALLBACK_SMALL}
         alt={movie.title}
-        className="w-full aspect-[2/3] object-cover rounded-lg group-hover:opacity-80 transition-opacity"
+        className="w-full aspect-[2/3] object-cover rounded-xl group-hover:opacity-80 transition-opacity"
         onError={e => { e.target.src = FALLBACK_SMALL }}
       />
       <div className="mt-1.5 px-0.5">
-        <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{movie.title_clean || movie.title}</p>
-        <p className="text-xs text-gray-500">{movie.year}</p>
+        <p className="text-xs text-slate-200 font-medium line-clamp-2 leading-tight">{movie.title_clean || movie.title}</p>
+        <p className="text-xs text-slate-500">{movie.year}</p>
         <div className="flex flex-wrap gap-1 mt-0.5">
-          {genres.map(g => (
-            <span key={g} className="text-xs text-indigo-400">{g}</span>
-          ))}
+          {genres.map(g => <span key={g} className="text-xs text-indigo-400">{g}</span>)}
         </div>
       </div>
     </div>

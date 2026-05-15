@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import api from '../api/client'
 import MovieCard from '../components/MovieCard'
 
 function HorizontalScroll({ title, subtitle, movies, userRatings, favorites, onRate, onFavorite }) {
   return (
     <section className="mb-10">
-      <h2 className="text-lg font-semibold text-white mb-1">{title}</h2>
-      {subtitle && <p className="text-xs text-gray-500 mb-3">{subtitle}</p>}
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <h2 className="text-base font-semibold text-slate-200 mb-1 flex items-center gap-2">{title}</h2>
+      {subtitle && <p className="text-xs text-slate-500 mb-3">{subtitle}</p>}
+      <div className="flex gap-3 overflow-x-auto pb-2">
         {movies.map(m => (
           <div key={m.movie_id ?? m.id} className="flex-shrink-0 w-36">
             <MovieCard
@@ -29,8 +30,8 @@ function HorizontalScroll({ title, subtitle, movies, userRatings, favorites, onR
 function GridSection({ title, movies, userRatings, favorites, onRate, onFavorite, enableLLM = false, llmExplanations = {}, onExplain }) {
   return (
     <section className="mb-10">
-      <h2 className="text-lg font-semibold text-white mb-4">{title}</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <h2 className="text-base font-semibold text-slate-200 mb-3 flex items-center gap-2">{title}</h2>
+      <div className="grid grid-cols-5 gap-4">
         {movies.map(m => {
           const id = m.movie_id ?? m.id
           return (
@@ -54,6 +55,7 @@ function GridSection({ title, movies, userRatings, favorites, onRate, onFavorite
 
 export default function Home() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [recs, setRecs] = useState([])
   const [social, setSocial] = useState([])
   const [popular, setPopular] = useState([])
@@ -68,7 +70,7 @@ export default function Home() {
     setLoading(true)
     try {
       const [recRes, popRes, socialRes, ratingsRes, favRes] = await Promise.all([
-        api.get('/recommendations?top_k=20').catch(() => ({ data: { recommendations: [] } })),
+        api.get('/recommendations?top_k=40').catch(() => ({ data: { recommendations: [] } })),
         api.get('/recommendations/popular?top_k=20'),
         api.get('/recommendations/social?top_k=10').catch(() => ({ data: { recommendations: [], has_enough_data: false } })),
         api.get('/profile/ratings').catch(() => ({ data: { ratings: [] } })),
@@ -94,18 +96,14 @@ export default function Home() {
 
   const fetchLLMExplanation = useCallback(async (movieId) => {
     console.log('[LLM] chiamata per movie:', movieId)
-
     try {
       setLlmExplanations(prev => ({ ...prev, [movieId]: 'loading' }))
       console.log('[LLM] stato loading impostato')
-
       const response = await api.get(`/explain/${movieId}`)
       console.log('[LLM] risposta ricevuta:', response.data)
-
       const explanation = response.data.explanation
       setLlmExplanations(prev => ({ ...prev, [movieId]: explanation || 'Spiegazione non disponibile' }))
       console.log('[LLM] stato aggiornato con spiegazione')
-
     } catch (err) {
       console.error('[LLM] errore:', err.response?.status, err.message)
       setLlmExplanations(prev => ({ ...prev, [movieId]: null }))
@@ -128,36 +126,55 @@ export default function Home() {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center h-64 text-gray-400">
+    <div className="flex items-center justify-center h-64 text-slate-400">
       <div className="animate-spin text-4xl">⟳</div>
     </div>
   )
 
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main className="pt-6 pb-12 px-4 max-w-7xl mx-auto">
+
+      {/* Hero */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-100">
+          Ciao, {user?.username} 👋
+        </h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Le tue raccomandazioni personalizzate di oggi
+        </p>
+        <div className="h-px mt-4" style={{
+          background: 'linear-gradient(to right, transparent, rgba(129,140,248,0.4), transparent)'
+        }} />
+      </div>
 
       {/* Prompt onboarding */}
       {ratingCount < 5 && (
-        <div className="bg-indigo-900/40 border border-indigo-700 rounded-xl p-6 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div
+          className="rounded-xl p-6 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          style={{
+            background: 'rgba(99,102,241,0.1)',
+            border: '1px solid rgba(99,102,241,0.25)',
+          }}
+        >
           <div>
-            <h3 className="text-white font-semibold">Personalizza le tue raccomandazioni</h3>
-            <p className="text-gray-400 text-sm mt-1">
+            <h3 className="text-slate-100 font-semibold">Personalizza le tue raccomandazioni</h3>
+            <p className="text-slate-400 text-sm mt-1">
               Valuta almeno {5 - ratingCount} film per ricevere consigli personalizzati.
             </p>
           </div>
           <button
             onClick={() => navigate('/movies')}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="text-white text-sm font-medium px-4 py-2 rounded-lg transition-all whitespace-nowrap"
+            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
           >
             Vai al catalogo
           </button>
         </div>
       )}
 
-      {/* Raccomandazioni personalizzate (hybrid) */}
       {recs.length > 0 && (
         <GridSection
-          title="Consigliati per te"
+          title="🎬 Consigliati per te"
           movies={recs}
           userRatings={userRatings}
           favorites={favorites}
@@ -169,7 +186,6 @@ export default function Home() {
         />
       )}
 
-      {/* Social CF — appare solo se has_enough_data=true */}
       {social.length > 0 && (
         <HorizontalScroll
           title="👥 Piace a utenti con gusti simili ai tuoi"
@@ -182,10 +198,9 @@ export default function Home() {
         />
       )}
 
-      {/* Popolari */}
       {popular.length > 0 && (
         <HorizontalScroll
-          title="I più popolari in questo momento"
+          title="🔥 I più popolari in questo momento"
           movies={popular}
           userRatings={userRatings}
           favorites={favorites}
