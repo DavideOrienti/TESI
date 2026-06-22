@@ -1,13 +1,37 @@
+"""
+Variante sparse/a blocchi di 09b_itemknn_cf_improved.py.
+
+Stessa aritmetica (coseno su rating centrati, filtro min_common_users,
+shrinkage, USE_ONLY_POSITIVE_SIM, top-50 vicini per item), ma:
+- matrice item x user costruita come scipy.sparse.csr_matrix (nessun
+  pivot_table, nessuna matrice densa item x user);
+- similarità item-item calcolata A BLOCCHI: mai materializzata la matrice
+  item x item completa. Per ogni blocco B di item si calcola
+  B_norm @ all_norm.T (denso solo sul blocco, block x n_items) per il
+  coseno, e B_mask @ all_mask.T (matmul sparso delle maschere di non-zero)
+  per i common_counts. Picco di memoria O(block x n_items).
+
+Lo scoring/valutazione (score_user_item_improved, recommend_top_k_for_user,
+compute_rating_errors_knn, evaluate_split) sono identici a 09b dense: una
+volta costruito neighbors_dict nello stesso formato (via build_cf_neighbors_dict,
+importato invariato da src.recommenders.collaborative), tutto il resto della
+pipeline di valutazione non dipende da come la similarità è stata calcolata.
+
+Output in baseline_itemknn_cf_improved_sparse/, per non sovrascrivere
+baseline_itemknn_cf_improved/ che Fase_3/15 e Fase_3/16 leggono.
+"""
 from __future__ import annotations
 import json
+import time
 import numpy as np
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import csr_matrix
+from sklearn.preprocessing import normalize
 
+from src.utils.io import load_settings
 from src.recommenders.collaborative import build_cf_neighbors_dict, recommend_itemknn_top_k
 from src.recommenders.popularity import build_popularity_ranking
 from src.utils.eval import hit_rate_at_k, ndcg_at_k_single, mrr_at_k_single, precision_at_k, recall_at_k, compute_rmse, compute_mae
-from src.utils.io import load_settings
 
 # =========================
 # CONFIG
@@ -22,6 +46,8 @@ MIN_POSITIVE_NEIGHBORS_FOR_SCORE = 1
 USE_ONLY_POSITIVE_SIM = True
 
 POPULARITY_MIN_VOTES = 10
+
+BLOCK_SIZE = 200  # righe item processate per blocco; picco memoria O(BLOCK_SIZE x n_items)
 
 
 def print_stats(df: pd.DataFrame, label: str) -> None:
@@ -48,81 +74,128 @@ def build_user_means(train: pd.DataFrame) -> dict[int, float]:
     return train.groupby("userId")["rating"].mean().to_dict()
 
 
-def build_centered_matrix(train: pd.DataFrame) -> pd.DataFrame:
-    df = train.copy()
-    user_mean = df.groupby("userId")["rating"].mean().rename("user_mean")
-    df = df.merge(user_mean, on="userId", how="left")
-    df["rating_centered"] = df["rating"] - df["user_mean"]
-
-    user_item = df.pivot_table(
-        index="userId",
-        columns="movieId",
-        values="rating_centered",
-        fill_value=0.0
-    )
-    return user_item
-
-
 def get_valid_items(train: pd.DataFrame) -> list[int]:
     counts = train["movieId"].value_counts()
     return counts[counts >= MIN_ITEM_INTERACTIONS].index.tolist()
 
 
-def build_item_similarity_improved(
-    user_item_centered: pd.DataFrame,
+def build_centered_item_user_sparse(
+    train: pd.DataFrame,
     valid_items: list[int],
-) -> pd.DataFrame:
+) -> tuple[csr_matrix, dict[int, int], dict[int, int], np.ndarray]:
     """
-    Similarità item-item con:
-    - cosine su rating centrati
-    - filtro min_common_users
-    - shrinkage
+    Costruisce la matrice item x user centrata come CSR, ristretta a valid_items.
+    Equivalente sparse di build_centered_matrix (09b dense) + la selezione
+    `cols = [c for c in user_item_centered.columns if c in valid_items]`:
+    stesso rating_centered = rating - user_mean, stesse righe (item, ordine
+    movieId ascendente) e stesse colonne (TUTTI gli utenti del train, ordine
+    userId ascendente).
     """
-    cols = [c for c in user_item_centered.columns if c in valid_items]
-    item_matrix = user_item_centered[cols].T  # item x user
+    df = train.copy()
+    user_mean = df.groupby("userId")["rating"].mean().rename("user_mean")
+    df = df.merge(user_mean, on="userId", how="left")
+    df["rating_centered"] = df["rating"] - df["user_mean"]
 
-    item_ids = item_matrix.index.to_numpy()
-    X = item_matrix.values
+    valid_set = {int(m) for m in valid_items}
+    df = df[df["movieId"].isin(valid_set)]
 
-    sim_raw = cosine_similarity(X)
-    nonzero_mask = (X != 0).astype(np.int8)
-    common_counts = nonzero_mask @ nonzero_mask.T
+    user_ids = np.sort(train["userId"].unique())
+    item_ids = np.sort(np.array(sorted(valid_set), dtype=np.int64))
 
-    sim = sim_raw.copy()
+    user_index = {int(u): i for i, u in enumerate(user_ids)}
+    item_index = {int(m): i for i, m in enumerate(item_ids)}
 
-    # Filtro common users
-    sim[common_counts < MIN_COMMON_USERS] = 0.0
+    rows = df["movieId"].map(item_index).to_numpy()
+    cols = df["userId"].map(user_index).to_numpy()
+    data = df["rating_centered"].to_numpy(dtype=np.float64)
 
-    # Shrinkage
-    sim = sim * (common_counts / (common_counts + SIM_SHRINKAGE))
+    matrix = csr_matrix((data, (rows, cols)), shape=(len(item_ids), len(user_ids)))
+    matrix.eliminate_zeros()  # rating == user_mean esatto => "nessuna interazione", come X != 0 nel denso
 
-    np.fill_diagonal(sim, 0.0)
-
-    sim_df = pd.DataFrame(sim, index=item_ids, columns=item_ids)
-    return sim_df
+    return matrix, item_index, user_index, item_ids
 
 
-def extract_top_neighbors(sim_df: pd.DataFrame) -> pd.DataFrame:
+def extract_top_neighbors_block(
+    sim_block: np.ndarray,
+    block_item_ids: np.ndarray,
+    movie_ids_by_col: np.ndarray,
+) -> list[dict]:
+    """
+    Estrae i top-TOP_NEIGHBORS vicini per ogni riga del blocco.
+    Tie-break: similarità decrescente, poi movieId crescente (stesso esito
+    di extract_top_neighbors dense per valori non in parità; per i pari
+    sceglie deterministicamente l'ordine di indice originale).
+    """
     rows = []
-
-    for item_id in sim_df.index:
-        sims = sim_df.loc[item_id]
+    for local_r in range(sim_block.shape[0]):
+        item_id = int(block_item_ids[local_r])
+        sims_row = sim_block[local_r]
 
         if USE_ONLY_POSITIVE_SIM:
-            sims = sims[sims > 0]
+            keep = sims_row > 0
         else:
-            sims = sims[sims != 0]
+            keep = sims_row != 0
 
-        top = sims.sort_values(ascending=False).head(TOP_NEIGHBORS)
+        idx = np.nonzero(keep)[0]
+        if idx.size == 0:
+            continue
 
-        for neigh_id, value in top.items():
+        sims_vals = sims_row[idx]
+        neighbor_ids = movie_ids_by_col[idx]
+
+        order = np.lexsort((neighbor_ids, -sims_vals))
+        top_order = order[:TOP_NEIGHBORS]
+
+        for o in top_order:
             rows.append({
-                "movieId": int(item_id),
-                "neighbor_movieId": int(neigh_id),
-                "similarity": float(value)
+                "movieId": item_id,
+                "neighbor_movieId": int(neighbor_ids[o]),
+                "similarity": float(sims_vals[o]),
             })
+    return rows
 
-    return pd.DataFrame(rows)
+
+def build_item_similarity_blocks(
+    item_user_sparse: csr_matrix,
+    item_ids: np.ndarray,
+    block_size: int = BLOCK_SIZE,
+) -> pd.DataFrame:
+    """
+    Similarità item-item a blocchi, mai materializzando la matrice item x item
+    completa. Replica l'aritmetica di build_item_similarity_improved (09b dense):
+    coseno sui rating centrati, filtro min_common_users, shrinkage, diagonale a 0.
+    """
+    n_items = item_user_sparse.shape[0]
+
+    item_user_norm = normalize(item_user_sparse, norm="l2", axis=1)
+
+    item_user_mask = item_user_sparse.copy()
+    item_user_mask.data = np.ones_like(item_user_mask.data)
+
+    norm_t = item_user_norm.T.tocsr()
+    mask_t = item_user_mask.T.tocsr()
+
+    all_rows: list[dict] = []
+
+    for start in range(0, n_items, block_size):
+        end = min(start + block_size, n_items)
+
+        cos_block = (item_user_norm[start:end] @ norm_t).toarray()
+        common_block = (item_user_mask[start:end] @ mask_t).toarray()
+
+        sim_block = cos_block.copy()
+        sim_block[common_block < MIN_COMMON_USERS] = 0.0
+        sim_block = sim_block * (common_block / (common_block + SIM_SHRINKAGE))
+
+        for local_r in range(end - start):
+            sim_block[local_r, start + local_r] = 0.0
+
+        block_item_ids = item_ids[start:end]
+        all_rows.extend(extract_top_neighbors_block(sim_block, block_item_ids, item_ids))
+
+        print(f"[09b-sparse] processed items {end}/{n_items}")
+
+    return pd.DataFrame(all_rows)
 
 
 def get_user_seen_ratings(train: pd.DataFrame) -> dict[int, dict[int, float]]:
@@ -292,11 +365,11 @@ def main():
     train_file = base / "ratings_train.csv"
     val_file   = base / "ratings_val.csv"
     test_file  = base / "ratings_test.csv"
-    output_dir = base / "baseline_itemknn_cf_improved"
+    output_dir = base / "baseline_itemknn_cf_improved_sparse"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[09b] dataset={s.dataset}")
-    print(f"[09b] base path={base}")
+    print(f"[09b-sparse] dataset={s.dataset}")
+    print(f"[09b-sparse] base path={base}")
 
     for p in [train_file, val_file, test_file]:
         if not p.exists():
@@ -314,12 +387,16 @@ def main():
     valid_items = get_valid_items(train)
     print(f"\nvalid items for similarity: {len(valid_items)}")
 
-    user_item_centered = build_centered_matrix(train)
-    print(f"user-item centered matrix shape: {user_item_centered.shape}")
+    fit_start = time.perf_counter()
 
-    sim_df = build_item_similarity_improved(user_item_centered, valid_items)
-    top_neighbors_df = extract_top_neighbors(sim_df)
+    item_user_sparse, item_index, user_index, item_ids = build_centered_item_user_sparse(train, valid_items)
+    print(f"item-user sparse matrix shape: {item_user_sparse.shape}, nnz={item_user_sparse.nnz}")
+
+    top_neighbors_df = build_item_similarity_blocks(item_user_sparse, item_ids, BLOCK_SIZE)
     neighbors_dict = build_cf_neighbors_dict(top_neighbors_df)
+
+    fit_time_s = time.perf_counter() - fit_start
+    print(f"fit_time_s: {fit_time_s:.2f}")
 
     sim_path = output_dir / "item_similarity_top_neighbors.csv"
     top_neighbors_df.to_csv(sim_path, index=False)
@@ -331,6 +408,8 @@ def main():
     print(top_neighbors_df.head(10).to_string(index=False))
 
     candidate_items = sorted(train["movieId"].unique().tolist())
+
+    eval_start = time.perf_counter()
 
     val_summary, val_per_user = evaluate_split(
         train=train,
@@ -352,6 +431,9 @@ def main():
 
     val_rmse, val_mae, val_n = compute_rating_errors_knn(train, val, neighbors_dict)
     test_rmse, test_mae, test_n = compute_rating_errors_knn(train, test, neighbors_dict)
+
+    eval_time_s = time.perf_counter() - eval_start
+    print(f"eval_time_s: {eval_time_s:.2f}")
 
     val_summary["RMSE"] = round(val_rmse, 4)
     val_summary["MAE"] = round(val_mae, 4)
@@ -376,8 +458,11 @@ def main():
             "min_common_users": MIN_COMMON_USERS,
             "sim_shrinkage": SIM_SHRINKAGE,
             "popularity_min_votes": POPULARITY_MIN_VOTES,
-            "model": "item_knn_cf_improved"
+            "block_size": BLOCK_SIZE,
+            "model": "item_knn_cf_improved_sparse"
         },
+        "fit_time_s": round(fit_time_s, 4),
+        "eval_time_s": round(eval_time_s, 4),
         "validation": val_summary,
         "test": test_summary
     }

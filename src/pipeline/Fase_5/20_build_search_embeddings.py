@@ -19,10 +19,12 @@ import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
+from src.utils.io import load_settings
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-MOVIES_CSV = _PROJECT_ROOT / "data" / "processed" / "small" / "movies_enriched_tmdb.csv"
+MOVIES_CSV = load_settings().paths.processed / "movies_enriched_tmdb.csv"
 OUTPUT_DIR = _PROJECT_ROOT / "data" / "deploy_artifacts"
 OUTPUT_NPY = OUTPUT_DIR / "search_embeddings_minilm.npy"
 OUTPUT_IDX = OUTPUT_DIR / "search_embeddings_index.csv"

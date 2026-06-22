@@ -57,25 +57,15 @@ def main():
             f"Serve filtrarli prima dello split."
         )
 
-    train_parts = []
-    val_parts = []
-    test_parts = []
+    # Split leave-last-2-out vettorizzato: df è già ordinato per [userId, timestamp,
+    # movieId], quindi cumcount(ascending=False) dà 0 all'ultimo rating dell'utente
+    # (=> test), 1 al penultimo (=> val), >=2 al resto (=> train) — stesso esito di
+    # iloc[-1:] / iloc[-2:-1] / iloc[:-2] per ciascun gruppo utente.
+    rank_from_end = df.groupby("userId").cumcount(ascending=False)
 
-    for user_id, user_df in df.groupby("userId", sort=False):
-        user_df = user_df.sort_values(["timestamp", "movieId"]).reset_index(drop=True)
-
-        # split leave-last-2-out temporale
-        train_u = user_df.iloc[:-2].copy()
-        val_u = user_df.iloc[-2:-1].copy()
-        test_u = user_df.iloc[-1:].copy()
-
-        train_parts.append(train_u)
-        val_parts.append(val_u)
-        test_parts.append(test_u)
-
-    train_df = pd.concat(train_parts, ignore_index=True)
-    val_df = pd.concat(val_parts, ignore_index=True)
-    test_df = pd.concat(test_parts, ignore_index=True)
+    train_df = df[rank_from_end >= 2].copy()
+    val_df = df[rank_from_end == 1].copy()
+    test_df = df[rank_from_end == 0].copy()
 
     # Riordino finale
     train_df = train_df.sort_values(["timestamp", "userId", "movieId"]).reset_index(drop=True)
@@ -95,14 +85,24 @@ def main():
     assert val_users.issubset(train_users), "Ci sono utenti in val non presenti nel train"
     assert test_users.issubset(train_users), "Ci sono utenti in test non presenti nel train"
 
-    # Check temporale per utente
-    for user_id in train_users:
-        max_train = train_df.loc[train_df["userId"] == user_id, "timestamp"].max()
-        min_val = val_df.loc[val_df["userId"] == user_id, "timestamp"].min()
-        min_test = test_df.loc[test_df["userId"] == user_id, "timestamp"].min()
+    # Check temporale per utente, vettorizzato via groupby + merge (no loop Python).
+    train_max = train_df.groupby("userId")["timestamp"].max().rename("train_max")
+    val_min = val_df.groupby("userId")["timestamp"].min().rename("val_min")
+    test_min = test_df.groupby("userId")["timestamp"].min().rename("test_min")
 
-        assert max_train <= min_val, f"Temporal leakage train-val per user {user_id}"
-        assert min_val <= min_test, f"Temporal leakage val-test per user {user_id}"
+    audit_ts = pd.concat([train_max, val_min, test_min], axis=1)
+
+    bad_train_val = audit_ts.index[audit_ts["train_max"] > audit_ts["val_min"]]
+    if len(bad_train_val) > 0:
+        raise AssertionError(
+            f"Temporal leakage train-val per {len(bad_train_val)} utenti, es: {list(bad_train_val[:5])}"
+        )
+
+    bad_val_test = audit_ts.index[audit_ts["val_min"] > audit_ts["test_min"]]
+    if len(bad_val_test) > 0:
+        raise AssertionError(
+            f"Temporal leakage val-test per {len(bad_val_test)} utenti, es: {list(bad_val_test[:5])}"
+        )
 
     # Audit unseen items
     train_items = set(train_df["movieId"].unique())

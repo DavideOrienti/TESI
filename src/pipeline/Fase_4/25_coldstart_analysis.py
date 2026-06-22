@@ -6,7 +6,6 @@ su 4 modelli: Popularity, PureSVD, Content-Based, Hybrid SVD+CB.
 import pandas as pd
 import numpy as np
 import json
-from pathlib import Path
 from src.utils.io import load_settings
 from src.utils.eval import hit_rate_at_k
 
@@ -54,7 +53,6 @@ def _summarize(hits: dict, ndcgs: dict) -> dict:
 def main():
     s = load_settings()
     base = s.paths.processed
-    deploy = Path("data/deploy_artifacts")
 
     # ── Dati ────────────────────────────────────────────────
     ratings_train = pd.read_csv(base / "ratings_train.csv")
@@ -110,7 +108,7 @@ def main():
 
     # ── PURE SVD ────────────────────────────────────────────
     print("Computing PureSVD...")
-    svd_matrix = pd.read_parquet(deploy / "svd_matrix.parquet")
+    svd_matrix = pd.read_csv(base / "baseline_pure_svd" / "predicted_scores_matrix.csv", index_col=0)
     svd_matrix.columns = [int(c) for c in svd_matrix.columns]
     svd_matrix.index   = [int(i) for i in svd_matrix.index]
 
@@ -132,8 +130,8 @@ def main():
 
     # ── CONTENT-BASED ───────────────────────────────────────
     print("Computing Content-Based...")
-    index_df      = pd.read_csv(deploy / "movie_embeddings_index_v2.csv")
-    neighbors_df  = pd.read_csv(deploy / "content_top_neighbors_v2.csv")
+    index_df      = pd.read_csv(base / "movie_embeddings_index_v2.csv")
+    neighbors_df  = pd.read_csv(base / "content_top_neighbors_v2.csv")
     idx_to_mid    = _build_index_to_movieid(index_df)
     neighbors     = _build_neighbors(neighbors_df, idx_to_mid)
 

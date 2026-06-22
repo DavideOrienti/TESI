@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from dataclasses import dataclass
 from pathlib import Path
 import yaml
@@ -36,13 +37,21 @@ class Settings:
     filters: FiltersCfg
 
 
-def load_settings(settings_path: str = "src/config/settings.yaml") -> Settings:
+def load_settings(settings_path: str = "src/config/settings.yaml", dataset: str | None = None) -> Settings:
     with open(settings_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    dataset = cfg["dataset"]
-    raw = Path(cfg["paths"]["raw_small" if dataset == "small" else "raw_20m"])
-    processed = Path(cfg["paths"]["processed_small" if dataset == "small" else "processed_20m"])
+    dataset = dataset or os.environ.get("CINEREC_DATASET") or cfg["dataset"]
+
+    try:
+        dataset_cfg = cfg["datasets"][dataset]
+    except KeyError:
+        raise ValueError(
+            f"Dataset non configurato: {dataset!r}. Disponibili: {sorted(cfg['datasets'])}"
+        )
+
+    raw = Path(dataset_cfg["raw"])
+    processed = Path(dataset_cfg["processed"])
     cache_tmdb = Path(cfg["paths"]["cache_tmdb"])
 
     processed.mkdir(parents=True, exist_ok=True)

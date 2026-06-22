@@ -1,10 +1,17 @@
-dataset: small  # small | 20m
+dataset: small  # default; override via load_settings(dataset=...) o env CINEREC_DATASET
+
+datasets:
+  small:
+    raw: data/raw/ml-latest-small
+    processed: data/processed/small
+  ml-20m:
+    raw: data/raw/ml-20m
+    processed: data/processed/20m  # riusa il lavoro Fase_0/Fase_1 esistente su ml-20m
+  ml-25m-1m:
+    raw: data/raw/ml-25m-1m
+    processed: data/processed/ml-25m-1m
 
 paths:
-  raw_small: data/raw/ml-latest-small
-  raw_20m: data/raw/ml-20m
-  processed_small: data/processed/small
-  processed_20m: data/processed/20m
   cache_tmdb: cache/tmdb
 
 tmdb:
