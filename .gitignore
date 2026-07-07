@@ -25,6 +25,8 @@ src/webapp/backend/database.db
 # ENVIRONMENT
 # =============================
 .env
+*.env
+!.env.example
 .venv/
 venv/
 
