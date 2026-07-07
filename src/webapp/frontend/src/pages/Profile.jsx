@@ -52,10 +52,10 @@ export default function Profile() {
     : null
 
   return (
-    <main className="pt-6 pb-12 px-4 max-w-3xl mx-auto">
+    <main className="pt-5 sm:pt-6 pb-12 px-3 sm:px-4 max-w-3xl mx-auto">
       {/* Card profilo */}
       <div
-        className="rounded-2xl p-6 mb-6"
+        className="rounded-2xl p-4 sm:p-6 mb-6"
         style={{
           background: 'rgba(255,255,255,0.05)',
           backdropFilter: 'blur(12px)',
@@ -63,16 +63,16 @@ export default function Profile() {
           border: '1px solid rgba(255,255,255,0.10)',
         }}
       >
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4 sm:gap-5">
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
           >
             {initials}
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-100">{user?.username}</h1>
-            <p className="text-slate-400 text-sm">{user?.email}</p>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold text-slate-100 truncate">{user?.username}</h1>
+            <p className="text-slate-400 text-sm truncate">{user?.email}</p>
             <p className="text-slate-500 text-sm mt-1">
               {ratings.length} film valutati · {favorites.length} preferiti
               {avgRating && ` · ${avgRating} ★ media`}
@@ -83,7 +83,7 @@ export default function Profile() {
 
       {/* Tab selector */}
       <div
-        className="flex gap-1 p-1 rounded-xl mb-6 w-fit"
+        className="flex gap-1 p-1 rounded-xl mb-6 w-full min-[420px]:w-fit"
         style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -93,7 +93,7 @@ export default function Profile() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+            className="flex-1 min-[420px]:flex-none px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
             style={tab === key ? tabActive : tabInactive}
           >
             {label}
@@ -107,7 +107,7 @@ export default function Profile() {
         favorites.length === 0 ? (
           <EmptyState icon="🎬" text="Nessun film nei preferiti" cta="Esplora il catalogo" onCta={() => navigate('/movies')} />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
             {favorites.map(m => (
               <MovieCard
                 key={m.id}

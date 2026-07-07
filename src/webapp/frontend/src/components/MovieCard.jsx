@@ -17,7 +17,7 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
 
   return (
     <div
-      className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1"
+      className="group relative min-w-0 rounded-xl sm:rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 sm:hover:scale-[1.02] sm:hover:-translate-y-1"
       style={{
         background: 'rgba(255,255,255,0.05)',
         backdropFilter: 'blur(12px)',
@@ -53,7 +53,7 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
           <button
             data-no-nav
             onClick={e => { e.stopPropagation(); onFavorite(movie.id ?? movie.movie_id) }}
-            className="absolute top-2 right-2 bg-black/30 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 opacity-0 group-hover:opacity-100"
+            className="absolute top-2 right-2 bg-black/40 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             title={isFavorite ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}
           >
             <span className={isFavorite ? 'text-rose-400' : 'text-white/60'}>
@@ -64,8 +64,8 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
       </div>
 
       {/* Body */}
-      <div className="p-3">
-        <h3 className="font-medium text-sm text-slate-100 leading-tight line-clamp-2 mb-1.5">
+      <div className="min-w-0 p-2.5 sm:p-3">
+        <h3 className="font-medium text-sm text-slate-100 leading-tight line-clamp-2 break-words mb-1.5">
           {movie.title_clean || movie.title}
         </h3>
 
@@ -74,7 +74,7 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
             {genres.map(g => (
               <span
                 key={g}
-                className="text-[10px] px-2 py-0.5 rounded-full border"
+                className="max-w-full truncate text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full border"
                 style={{
                   background: 'rgba(129,140,248,0.12)',
                   borderColor: 'rgba(129,140,248,0.25)',
@@ -88,7 +88,7 @@ export default function MovieCard({ movie, userRating, isFavorite, onRate, onFav
         )}
 
         {showRating && (
-          <div data-no-nav className="mt-1">
+          <div data-no-nav className="mt-1 overflow-hidden">
             <StarRating
               value={userRating ?? 0}
               onChange={onRate ? (v) => onRate(movie.id ?? movie.movie_id, v) : undefined}

@@ -9,9 +9,9 @@ function HorizontalScroll({ title, subtitle, movies, userRatings, favorites, onR
     <section className="mb-10">
       <h2 className="text-base font-semibold text-slate-200 mb-1 flex items-center gap-2">{title}</h2>
       {subtitle && <p className="text-xs text-slate-500 mb-3">{subtitle}</p>}
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
         {movies.map(m => (
-          <div key={m.movie_id ?? m.id} className="flex-shrink-0 w-36">
+          <div key={m.movie_id ?? m.id} className="flex-shrink-0 w-36 sm:w-40">
             <MovieCard
               movie={{ ...m, id: m.movie_id ?? m.id }}
               userRating={userRatings[m.movie_id ?? m.id]}
@@ -31,7 +31,7 @@ function GridSection({ title, movies, userRatings, favorites, onRate, onFavorite
   return (
     <section className="mb-10">
       <h2 className="text-base font-semibold text-slate-200 mb-3 flex items-center gap-2">{title}</h2>
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 sm:gap-4">
         {movies.map(m => {
           const id = m.movie_id ?? m.id
           return (
@@ -132,11 +132,11 @@ export default function Home() {
   )
 
   return (
-    <main className="pt-6 pb-12 px-4 max-w-7xl mx-auto">
+    <main className="pt-5 sm:pt-6 pb-12 px-3 sm:px-4 max-w-7xl mx-auto">
 
       {/* Hero */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-100">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-100 break-words">
           Ciao, {user?.username} 👋
         </h1>
         <p className="text-slate-400 text-sm mt-1">

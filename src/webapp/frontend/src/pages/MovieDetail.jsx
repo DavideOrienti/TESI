@@ -71,19 +71,19 @@ export default function MovieDetail() {
   const hasVisual = visualAvailable
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
       <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-white mb-6 flex items-center gap-1">
         ← Indietro
       </button>
 
       {/* Layout principale */}
-      <div className="flex flex-col md:flex-row gap-8 mb-10">
+      <div className="flex flex-col md:flex-row gap-6 sm:gap-8 mb-10">
         {/* Sinistra: poster + azioni */}
         <div className="flex-shrink-0 flex flex-col items-center gap-4">
           <img
             src={movie.poster_url || FALLBACK}
             alt={movie.title}
-            className="w-56 rounded-xl shadow-2xl"
+            className="w-48 max-w-full sm:w-56 rounded-xl shadow-2xl"
             onError={e => { e.target.src = FALLBACK }}
           />
 
@@ -107,9 +107,9 @@ export default function MovieDetail() {
         </div>
 
         {/* Destra: info */}
-        <div className="flex flex-col gap-4 flex-1">
+        <div className="flex min-w-0 flex-col gap-4 flex-1">
           <div>
-            <h1 className="text-3xl font-bold text-white leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight break-words">
               {movie.title_clean || movie.title}
             </h1>
             <p className="text-gray-400 text-lg mt-1">{movie.year}</p>
@@ -144,11 +144,11 @@ export default function MovieDetail() {
       {/* Film simili — tab trama / stile visivo */}
       {(hasTrama || hasVisual) && (
         <section>
-          <div className="flex gap-1 bg-gray-800 rounded-lg p-1 mb-4 w-fit">
+          <div className="flex flex-wrap gap-1 bg-gray-800 rounded-lg p-1 mb-4 w-full min-[480px]:w-fit">
             {hasTrama && (
               <button
                 onClick={() => setSimilarTab('trama')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex-1 min-[480px]:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   similarTab === 'trama' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
                 }`}
               >
@@ -158,7 +158,7 @@ export default function MovieDetail() {
             {hasVisual && (
               <button
                 onClick={() => setSimilarTab('visual')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex-1 min-[480px]:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   similarTab === 'visual' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
                 }`}
               >
@@ -168,9 +168,9 @@ export default function MovieDetail() {
           </div>
 
           {similarTab === 'trama' && hasTrama && (
-            <div className="flex gap-4 overflow-x-auto pb-2">
+            <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
               {similar_movies.map(s => (
-                <div key={s.movie_id} className="flex-shrink-0 w-32">
+                <div key={s.movie_id} className="flex-shrink-0 w-32 sm:w-36">
                   <div
                     className="bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform"
                     onClick={() => navigate(`/movies/${s.movie_id}`)}
@@ -186,9 +186,9 @@ export default function MovieDetail() {
             visualLoading ? (
               <div className="text-gray-400 text-sm py-4">Analisi stile visivo...</div>
             ) : (
-              <div className="flex gap-4 overflow-x-auto pb-2">
+              <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
                 {(visualSimilar ?? []).map(s => (
-                  <div key={s.movie_id} className="flex-shrink-0 w-32">
+                  <div key={s.movie_id} className="flex-shrink-0 w-32 sm:w-36">
                     <div
                       className="bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform"
                       onClick={() => navigate(`/movies/${s.movie_id}`)}

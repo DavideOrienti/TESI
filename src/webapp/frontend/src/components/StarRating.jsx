@@ -3,11 +3,11 @@ import { useState } from 'react'
 export default function StarRating({ value = 0, onChange, readonly = false, size = 'md' }) {
   const [hover, setHover] = useState(null)
 
-  const sizeClass = size === 'sm' ? 'text-base' : 'text-xl'
+  const sizeClass = size === 'sm' ? 'text-sm sm:text-base' : 'text-lg sm:text-xl'
   const display = hover ?? value
 
   return (
-    <div className={`flex gap-0.5 ${sizeClass}`}>
+    <div className={`flex min-w-0 gap-0.5 ${sizeClass}`}>
       {[1, 2, 3, 4, 5].map(star => {
         const full = display >= star
         const half = !full && display >= star - 0.5

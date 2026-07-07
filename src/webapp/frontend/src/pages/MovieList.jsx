@@ -192,9 +192,9 @@ export default function MovieList() {
   const totalPages = Math.ceil(total / LIMIT)
 
   return (
-    <main className="pt-6 pb-12 px-4 max-w-7xl mx-auto">
+    <main className="pt-5 sm:pt-6 pb-12 px-3 sm:px-4 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-100 mb-4">Catalogo Film</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mb-4">Catalogo Film</h1>
 
         {/* Tab switcher */}
         <div className="flex gap-2 mb-4 flex-wrap">
@@ -207,7 +207,7 @@ export default function MovieList() {
       {tab === 'title' && (
         <>
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <form onSubmit={handleSearch} className="flex gap-2 flex-1">
+            <form onSubmit={handleSearch} className="flex flex-col min-[380px]:flex-row gap-2 flex-1">
               <input
                 type="text"
                 value={searchInput}
@@ -242,7 +242,7 @@ export default function MovieList() {
           ) : (
             <>
               <p className="text-slate-500 text-sm mb-4">{total} film trovati</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 mb-8">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 mb-8">
                 {movies.map(m => (
                   <MovieCard
                     key={m.id}
@@ -255,7 +255,7 @@ export default function MovieList() {
                 ))}
               </div>
               {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-4">
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
@@ -282,7 +282,7 @@ export default function MovieList() {
 
       {tab === 'semantic' && (
         <>
-          <form onSubmit={handleSemanticSearch} className="flex gap-2 mb-2">
+          <form onSubmit={handleSemanticSearch} className="flex flex-col min-[420px]:flex-row gap-2 mb-2">
             <input
               type="text"
               value={semanticInput}
@@ -311,7 +311,7 @@ export default function MovieList() {
               <p className="text-slate-500 text-sm mb-4">
                 {semanticResults.length} risultati per "{semanticQuery}"
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 sm:gap-4">
                 {semanticResults.map(m => (
                   <div key={m.movie_id} className="flex flex-col">
                     <MovieCard
@@ -363,7 +363,7 @@ export default function MovieList() {
           </div>
 
           {visualPreview && (
-            <div className="flex items-start gap-6 mb-6">
+            <div className="flex flex-col min-[420px]:flex-row items-start gap-4 sm:gap-6 mb-6">
               <img
                 src={visualPreview}
                 alt="preview"
@@ -409,9 +409,9 @@ export default function MovieList() {
           {visualSimilar.length > 0 && (
             <div className="mb-8">
               <h2 className="text-base font-semibold text-slate-200 mb-4">Film con poster simili</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
                 {visualSimilar.slice(0, 5).map(m => (
-                  <div key={m.movie_id} className="flex-shrink-0 w-36 flex flex-col">
+                  <div key={m.movie_id} className="flex-shrink-0 w-36 sm:w-40 flex flex-col">
                     <MovieCard
                       movie={{ ...m, id: m.movie_id }}
                       userRating={userRatings[m.movie_id]}
@@ -443,7 +443,7 @@ export default function MovieList() {
                 Ti potrebbe piacere anche —{' '}
                 <span className="text-slate-400 font-normal">basato sulla trama di {visualRecognized.title}</span>
               </h2>
-              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-3">
                 {visualContentSimilar.map(s => (
                   <ContentSimilarCard key={s.movie_id} movieId={s.movie_id} navigate={navigate} />
                 ))}
