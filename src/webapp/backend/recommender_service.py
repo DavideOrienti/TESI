@@ -39,13 +39,14 @@ _content_neighbors_dict: dict[int, list[tuple[int, float]]] = {}
 _index_to_movieid: dict[int, int] = {}
 _candidate_items: list[int] = []
 _movie_titles: dict[int, str] = {}  # movie_id -> title_clean
+_movie_genres: dict[int, set[str]] = {}  # movie_id -> normalized genres
 _popularity_ranking: list[int] = []  # movie_ids ordinati per popolarità
 
 
 def init(config) -> None:
     """Chiamato da create_app() con l'oggetto Config."""
     global _initialized, _svd_matrix, _content_neighbors_dict
-    global _index_to_movieid, _candidate_items, _movie_titles, _popularity_ranking
+    global _index_to_movieid, _candidate_items, _movie_titles, _movie_genres, _popularity_ranking
 
     if _initialized:
         return
@@ -97,6 +98,10 @@ def init(config) -> None:
         int(row["movieId"]): str(row["title_clean"]) if pd.notna(row.get("title_clean")) else str(row["title"])
         for _, row in movies_df.iterrows()
     }
+    _movie_genres = {
+        int(row["movieId"]): _split_genres(row.get("genres"))
+        for _, row in movies_df.iterrows()
+    }
 
     # Ranking popolarità (fallback utenti nuovi)
     _popularity_ranking = ranking_from_movies_metadata(movies_df, _candidate_items)
@@ -141,6 +146,66 @@ def _content_explanation(
     return seeds
 
 
+def _split_genres(raw_genres) -> set[str]:
+    if raw_genres is None or pd.isna(raw_genres):
+        return set()
+    return {
+        genre.strip().lower()
+        for genre in str(raw_genres).split("|")
+        if genre.strip() and genre.strip() != "(no genres listed)"
+    }
+
+
+def _content_profile_baseline(ratings: dict[int, float], default: float = 3.5) -> float:
+    """
+    Use a neutral baseline for sparse/all-positive profiles.
+
+    With only high ratings or favorites, centering around the user's own mean
+    would erase the positive preference signal.
+    """
+    if not ratings:
+        return float(default)
+    values = list(ratings.values())
+    if len(values) < 5 or all(rating >= 4.0 for rating in values):
+        return float(default)
+    return user_mean_or_default(ratings, default)
+
+
+def _score_genre_affinity(
+    candidate_items: list[int],
+    seen_ratings: dict[int, float],
+    baseline: float,
+) -> dict[int, float]:
+    """Return rating-scale genre scores from positive user feedback."""
+    genre_weights: dict[str, float] = {}
+    total_weight = 0.0
+
+    for movie_id, rating in seen_ratings.items():
+        weight = max(0.0, float(rating) - baseline)
+        if weight <= 0:
+            continue
+        genres = _movie_genres.get(int(movie_id), set())
+        if not genres:
+            continue
+        per_genre = weight / len(genres)
+        for genre in genres:
+            genre_weights[genre] = genre_weights.get(genre, 0.0) + per_genre
+        total_weight += weight
+
+    if total_weight <= 0:
+        return {}
+
+    scores: dict[int, float] = {}
+    for movie_id in candidate_items:
+        genres = _movie_genres.get(int(movie_id), set())
+        if not genres:
+            continue
+        affinity = sum(genre_weights.get(genre, 0.0) for genre in genres) / total_weight
+        if affinity > 0:
+            scores[int(movie_id)] = baseline + (5.0 - baseline) * min(1.0, affinity)
+    return scores
+
+
 # ---------------------------------------------------------------------------
 # API pubblica
 # ---------------------------------------------------------------------------
@@ -151,6 +216,7 @@ def get_recommendations(
     user_ratings: dict[int, float],
     favorite_movie_ids: list[int] = [],
     top_k: int = 20,
+    use_collaborative: bool = False,
 ) -> list[dict]:
     """
     Hybrid PureSVD + Content-Based con gamma=0.7.
@@ -158,20 +224,36 @@ def get_recommendations(
     i preferiti con rating vengono rinforzati del 10% (max 5.0).
     """
     merged_ratings = merge_explicit_and_implicit_feedback(user_ratings, favorite_movie_ids)
-    seen_items = set(seen_movie_ids)
+    seen_items = set(seen_movie_ids).union(int(mid) for mid in favorite_movie_ids)
+    if not merged_ratings:
+        fallback = recommend_popular(_popularity_ranking, seen_items, top_k)
+        return [
+            {
+                "movie_id": mid,
+                "score": 0.0,
+                "explanation": {"type": "popular", "svd_score": 0.0, "content_score": 0.0, "seed_movies": []},
+            }
+            for mid in fallback
+        ]
+
     user_mean = user_mean_or_default(merged_ratings)
+    content_baseline = _content_profile_baseline(merged_ratings)
     unseen = [m for m in _candidate_items if m not in seen_items]
 
-    svd_raw = get_svd_scores_for_user(user_id, unseen, _svd_matrix, user_mean)
+    svd_matrix = _svd_matrix if use_collaborative else None
+    svd_raw = get_svd_scores_for_user(user_id, unseen, svd_matrix, user_mean)
     content_raw = score_content_candidates(
         candidate_items=unseen,
         seen_ratings=merged_ratings,
-        user_mean_rating=user_mean,
+        user_mean_rating=content_baseline,
         content_neighbors_dict=_content_neighbors_dict,
         exclude_seen=False,
     )
+    genre_raw = _score_genre_affinity(unseen, merged_ratings, content_baseline)
+    for movie_id, genre_score in genre_raw.items():
+        content_raw[movie_id] = max(content_raw.get(movie_id, content_baseline), genre_score)
 
-    is_new_user = _svd_matrix is None or user_id not in _svd_matrix.index
+    is_new_user = svd_matrix is None or user_id not in svd_matrix.index
 
     top = rank_hybrid_scores(
         collaborative_scores=svd_raw,
